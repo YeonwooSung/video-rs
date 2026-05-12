@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "video-rs",
+  "version": "0.1.0",
+  "identifier": "com.yeonwoosung.video-rs",
+  "build": {
+    "frontendDist": "../ui",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "video-rs beta",
+        "width": 1100,
+        "height": 760,
+        "resizable": true
+      }
+    ]
+  }
+}
