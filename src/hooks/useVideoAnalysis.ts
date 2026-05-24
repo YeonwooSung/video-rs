@@ -23,11 +23,13 @@ export function useVideoAnalysis() {
       const result = await analyzeVideo(filePath);
       setState({ data: result, isLoading: false, error: null });
     } catch (err) {
+      const message = String(err);
       setState({
         data: null,
         isLoading: false,
-        error: String(err),
+        error: message,
       });
+      throw err;
     }
   };
 

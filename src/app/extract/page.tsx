@@ -21,9 +21,8 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
-import { openVideoFile, saveFile } from "@/lib/tauri/commands";
+import { openVideoFile, saveFile, extractAudio } from "@/lib/tauri/commands";
 import { useProgress } from "@/hooks/useProgress";
-import { extractAudio } from "@/lib/tauri/commands";
 
 const CODEC_OPTIONS = [
   { value: "mp3", label: "MP3", ext: "mp3" },

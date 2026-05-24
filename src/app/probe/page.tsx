@@ -39,8 +39,11 @@ export default function ProbePage() {
       return;
     }
     reset();
-    await analyze(filePath);
-    if (error) toast.error("Analysis failed", { description: error });
+    try {
+      await analyze(filePath);
+    } catch (err) {
+      toast.error("Analysis failed", { description: String(err) });
+    }
   };
 
   return (

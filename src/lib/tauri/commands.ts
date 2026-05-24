@@ -39,11 +39,11 @@ export interface ExtractAudioArgs {
 /** Extract an audio track from a video file. */
 export function extractAudio(args: ExtractAudioArgs): Promise<void> {
   return invoke<void>("extract_audio", {
-    inputPath: args.inputPath,
-    outputPath: args.outputPath,
+    input_path: args.inputPath,
+    output_path: args.outputPath,
     codec: args.codec,
     bitrate: args.bitrate ?? null,
-    durationSecs: args.durationSecs ?? null,
+    duration_secs: args.durationSecs ?? null,
   });
 }
 
@@ -73,14 +73,14 @@ export interface ResizeVideoArgs {
   durationSecs?: number;
 }
 
-/** Resize a video to target dimensions. Pass -1 to preserve aspect ratio. */
+/** Resize a video to target dimensions. Pass -2 to preserve aspect ratio. */
 export function resizeVideo(args: ResizeVideoArgs): Promise<void> {
   return invoke<void>("resize_video", {
-    inputPath: args.inputPath,
-    outputPath: args.outputPath,
+    input_path: args.inputPath,
+    output_path: args.outputPath,
     width: args.width,
     height: args.height,
-    durationSecs: args.durationSecs ?? null,
+    duration_secs: args.durationSecs ?? null,
   });
 }
 

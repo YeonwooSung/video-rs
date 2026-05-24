@@ -24,7 +24,17 @@ pub async fn resize_video(
     }
     if width == 0 || height == 0 {
         return Err(AppError::InvalidArgument(
-            "width and height must be non-zero (use -1 to preserve aspect ratio)".into(),
+            "width and height must be non-zero (use -2 to auto-calculate preserving aspect ratio)".into(),
+        ));
+    }
+    if width < -2 || height < -2 {
+        return Err(AppError::InvalidArgument(
+            "negative values other than -2 are not valid for width/height".into(),
+        ));
+    }
+    if width == -2 && height == -2 {
+        return Err(AppError::InvalidArgument(
+            "at least one of width or height must be a positive value".into(),
         ));
     }
     FFmpegService::resize(&app, &input_path, &output_path, width, height, duration_secs).await

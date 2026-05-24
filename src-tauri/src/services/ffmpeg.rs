@@ -232,14 +232,27 @@ impl FFmpegService {
         output: &str,
         total_duration_secs: Option<f64>,
     ) -> Result<(), AppError> {
+        // -map 0:v:0  selects the first video stream from input 0
+        // -map 1:a:0  selects the first audio stream from input 1
         let args = FFmpegCommandBuilder::new()
             .input(video_input)
             .input(audio_input)
-            .map_all()
-            .copy_all()
             .output(output)
             .build();
-        Self::run(app, args, total_duration_secs).await
+
+        // Manually inject the explicit stream map before the output
+        let mut final_args = args;
+        let output_pos = final_args.len() - 1;
+        final_args.splice(
+            output_pos..output_pos,
+            [
+                "-map".to_string(), "0:v:0".to_string(),
+                "-map".to_string(), "1:a:0".to_string(),
+                "-c".to_string(), "copy".to_string(),
+            ],
+        );
+
+        Self::run(app, final_args, total_duration_secs).await
     }
 
     /// Resize a video to target dimensions.

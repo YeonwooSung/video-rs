@@ -15,6 +15,12 @@ import { Label } from "@/components/ui/label";
 import { openVideoFile } from "@/lib/tauri/commands";
 import { VideoPlayer } from "@/components/video-player/VideoPlayer";
 
+/** Convert a filesystem path to a Tauri asset URL (v2 compatible). */
+async function toAssetUrl(path: string): Promise<string> {
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
+  return convertFileSrc(path);
+}
+
 export default function ViewerPage() {
   const [filePath, setFilePath] = useState("");
   const [activeSrc, setActiveSrc] = useState("");
@@ -24,13 +30,12 @@ export default function ViewerPage() {
     if (path) setFilePath(path);
   };
 
-  const handleLoad = () => {
-    if (filePath.trim()) setActiveSrc(filePath.trim());
+  const handleLoad = async () => {
+    const trimmed = filePath.trim();
+    if (!trimmed) return;
+    const url = await toAssetUrl(trimmed);
+    setActiveSrc(url);
   };
-
-  // Convert filesystem path to a tauri asset URL
-  const toAssetUrl = (path: string) =>
-    `asset://${path.replace(/^\//, "")}`;
 
   return (
     <div className="space-y-6">
@@ -69,7 +74,7 @@ export default function ViewerPage() {
       {activeSrc && (
         <Card>
           <CardContent className="pt-6">
-            <VideoPlayer src={toAssetUrl(activeSrc)} />
+            <VideoPlayer src={activeSrc} />
             <p className="mt-2 text-xs text-muted-foreground truncate">
               Use the playback rate control in the player toolbar to adjust speed.
               Right-click the progress bar to seek precisely.

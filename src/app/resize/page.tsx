@@ -60,6 +60,9 @@ export default function ResizePage() {
     const w = parseInt(width);
     const h = parseInt(height);
     if (isNaN(w) || isNaN(h)) { toast.error("Invalid width/height"); return; }
+    if (w <= 0 && w !== -2) { toast.error("Width must be positive, or -2 to auto-calculate"); return; }
+    if (h <= 0 && h !== -2) { toast.error("Height must be positive, or -2 to auto-calculate"); return; }
+    if (w === -2 && h === -2) { toast.error("At least one dimension must be a positive value"); return; }
 
     setIsRunning(true);
     await progress.start();
