@@ -21,6 +21,7 @@ import { useRememberedFile } from "@/hooks/useRememberedFile";
 import { toastJobDone } from "@/lib/jobToast";
 import { CropFramePicker } from "@/components/media/CropFramePicker";
 import { useI18n } from "@/lib/i18n";
+import { displaySize } from "@/lib/types/video";
 
 export default function CropPage() {
   const { t } = useI18n();
@@ -43,10 +44,11 @@ export default function CropPage() {
       .then((info) => {
         if (cancelled) return;
         const video = info.streams.find((s) => s.codec_type === "video");
-        if (video?.width && video?.height) {
-          setSourceSize({ width: video.width, height: video.height });
-          setWidth(String(video.width));
-          setHeight(String(video.height));
+        const shown = displaySize(video?.width, video?.height, video?.rotation);
+        if (shown) {
+          setSourceSize(shown);
+          setWidth(String(shown.width));
+          setHeight(String(shown.height));
           setX("0");
           setY("0");
         } else {
@@ -219,6 +221,20 @@ export default function CropPage() {
                 setY(String(rect.y));
                 setWidth(String(rect.width));
                 setHeight(String(rect.height));
+              }}
+              onDisplaySize={(size) => {
+                if (
+                  sourceSize &&
+                  sourceSize.width === size.width &&
+                  sourceSize.height === size.height
+                ) {
+                  return;
+                }
+                setSourceSize(size);
+                setWidth(String(size.width));
+                setHeight(String(size.height));
+                setX("0");
+                setY("0");
               }}
             />
           )}

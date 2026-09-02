@@ -31,6 +31,8 @@ pub struct StreamInfo {
     // Video-specific fields
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// Clockwise degrees from `tags.rotate` or displaymatrix side data.
+    pub rotation: Option<f64>,
     pub r_frame_rate: Option<String>,
     pub avg_frame_rate: Option<String>,
     pub pix_fmt: Option<String>,
@@ -48,6 +50,17 @@ pub struct StreamInfo {
 }
 
 impl StreamInfo {
+    /// Coded size after applying 90/270° display rotation (what the player shows).
+    pub fn display_size(&self) -> Option<(u32, u32)> {
+        let w = self.width?;
+        let h = self.height?;
+        if rotation_swaps_axes(self.rotation.unwrap_or(0.0)) {
+            Some((h, w))
+        } else {
+            Some((w, h))
+        }
+    }
+
     /// Parse r_frame_rate (e.g. "30000/1001") to a floating-point fps value
     pub fn fps(&self) -> Option<f64> {
         let raw = self.r_frame_rate.as_deref()?;
@@ -59,4 +72,10 @@ impl StreamInfo {
         }
         Some(num / den)
     }
+}
+
+pub fn rotation_swaps_axes(degrees: f64) -> bool {
+    let quarter = (degrees / 90.0).round() as i32;
+    let q = quarter.rem_euclid(4);
+    q == 1 || q == 3
 }

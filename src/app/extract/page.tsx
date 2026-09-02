@@ -136,6 +136,11 @@ function AudioExtractPanel() {
       toast.error(t("extract.needFiles"));
       return;
     }
+    const hasAudio = streams.some((s) => s.codec_type === "audio");
+    if (!hasAudio || selected[0] == null) {
+      toast.error(t("extract.emptyAudio"));
+      return;
+    }
     const result = await job.runJob(
       (jobId) =>
         extractAudio({
@@ -196,22 +201,21 @@ function AudioExtractPanel() {
         </CardContent>
       </Card>
 
-      {streams.some((s) => s.codec_type === "audio") && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("extract.audioStream")}</CardTitle>
-            <CardDescription>{t("extract.audioStreamDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <StreamPicker
-              streams={streams}
-              types={["audio"]}
-              selected={selected}
-              onChange={setSelected}
-            />
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("extract.audioStream")}</CardTitle>
+          <CardDescription>{t("extract.audioStreamDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <StreamPicker
+            streams={streams}
+            types={["audio"]}
+            selected={selected}
+            onChange={setSelected}
+            emptyLabel={t("extract.emptyAudio")}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -264,7 +268,11 @@ function AudioExtractPanel() {
         />
       )}
 
-      <Button onClick={handleExtract} disabled={job.isRunning} className="gap-2">
+      <Button
+        onClick={handleExtract}
+        disabled={job.isRunning || !streams.some((s) => s.codec_type === "audio")}
+        className="gap-2"
+      >
         <Music className="h-4 w-4" />
         {job.isRunning ? t("extract.running") : t("extract.runAudio")}
       </Button>

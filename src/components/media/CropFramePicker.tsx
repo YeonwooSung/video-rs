@@ -42,19 +42,31 @@ export function CropFramePicker({
   videoHeight,
   value,
   onChange,
+  onDisplaySize,
 }: {
   src: string;
   videoWidth: number;
   videoHeight: number;
   value: CropRect;
   onChange: (next: CropRect) => void;
+  onDisplaySize?: (size: { width: number; height: number }) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const dragRef = useRef<Drag | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
+  const onDisplaySizeRef = useRef(onDisplaySize);
+  const [measured, setMeasured] = useState<{
+    src: string;
+    w: number;
+    h: number;
+  } | null>(null);
   const [cursor, setCursor] = useState("crosshair");
-  const scaleInfo = useDisplayScale(videoRef, videoWidth, videoHeight);
+  const frame =
+    measured && measured.src === src
+      ? { w: measured.w, h: measured.h }
+      : { w: videoWidth, h: videoHeight };
+  const scaleInfo = useDisplayScale(videoRef, frame.w, frame.h);
 
   useEffect(() => {
     valueRef.current = value;
@@ -64,22 +76,26 @@ export function CropFramePicker({
     onChangeRef.current = onChange;
   }, [onChange]);
 
+  useEffect(() => {
+    onDisplaySizeRef.current = onDisplaySize;
+  }, [onDisplaySize]);
+
   const toVideo = useCallback(
     (clientX: number, clientY: number): { x: number; y: number } | null => {
       const el = videoRef.current;
-      if (!el || videoWidth <= 0 || videoHeight <= 0) return null;
+      if (!el || frame.w <= 0 || frame.h <= 0) return null;
       const box = el.getBoundingClientRect();
-      const scale = Math.min(box.width / videoWidth, box.height / videoHeight);
-      const ox = (box.width - videoWidth * scale) / 2;
-      const oy = (box.height - videoHeight * scale) / 2;
+      const scale = Math.min(box.width / frame.w, box.height / frame.h);
+      const ox = (box.width - frame.w * scale) / 2;
+      const oy = (box.height - frame.h * scale) / 2;
       const x = Math.round((clientX - box.left - ox) / scale);
       const y = Math.round((clientY - box.top - oy) / scale);
       return {
-        x: clamp(x, 0, Math.max(0, videoWidth - 1)),
-        y: clamp(y, 0, Math.max(0, videoHeight - 1)),
+        x: clamp(x, 0, Math.max(0, frame.w - 1)),
+        y: clamp(y, 0, Math.max(0, frame.h - 1)),
       };
     },
-    [videoWidth, videoHeight]
+    [frame.w, frame.h]
   );
 
   const hitHandle = useCallback(
@@ -108,8 +124,8 @@ export function CropFramePicker({
               width: Math.max(1, Math.abs(p.x - drag.x0)),
               height: Math.max(1, Math.abs(p.y - drag.y0)),
             },
-            videoWidth,
-            videoHeight
+            frame.w,
+            frame.h
           )
         );
         return;
@@ -118,22 +134,22 @@ export function CropFramePicker({
         onChangeRef.current(
           clampRect(
             {
-              x: clamp(drag.start.x + (p.x - drag.px), 0, videoWidth - drag.start.width),
-              y: clamp(drag.start.y + (p.y - drag.py), 0, videoHeight - drag.start.height),
+              x: clamp(drag.start.x + (p.x - drag.px), 0, frame.w - drag.start.width),
+              y: clamp(drag.start.y + (p.y - drag.py), 0, frame.h - drag.start.height),
               width: drag.start.width,
               height: drag.start.height,
             },
-            videoWidth,
-            videoHeight
+            frame.w,
+            frame.h
           )
         );
         return;
       }
       onChangeRef.current(
-        clampRect(resizeRect(drag.start, drag.handle, p, videoWidth, videoHeight), videoWidth, videoHeight)
+        clampRect(resizeRect(drag.start, drag.handle, p, frame.w, frame.h), frame.w, frame.h)
       );
     },
-    [videoWidth, videoHeight]
+    [frame.w, frame.h]
   );
 
   useEffect(() => {
@@ -185,7 +201,7 @@ export function CropFramePicker({
       return;
     }
     beginDrag({ kind: "create", x0: p.x, y0: p.y }, e.currentTarget, e.pointerId);
-    onChange(clampRect({ x: p.x, y: p.y, width: 1, height: 1 }, videoWidth, videoHeight));
+    onChange(clampRect({ x: p.x, y: p.y, width: 1, height: 1 }, frame.w, frame.h));
   };
 
   const onHandleDown = (e: ReactPointerEvent<HTMLButtonElement>, handle: Handle) => {
@@ -209,8 +225,14 @@ export function CropFramePicker({
         preload="metadata"
         className="pointer-events-none block max-h-80 w-full object-contain"
         onLoadedMetadata={(ev) => {
-          ev.currentTarget.currentTime = 0;
-          ev.currentTarget.pause();
+          const el = ev.currentTarget;
+          el.currentTime = 0;
+          el.pause();
+          const w = el.videoWidth || videoWidth;
+          const h = el.videoHeight || videoHeight;
+          if (!w || !h) return;
+          setMeasured({ src, w, h });
+          onDisplaySizeRef.current?.({ width: w, height: h });
         }}
       />
       <div
@@ -256,14 +278,18 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
 }
 
+function evenFloor(n: number) {
+  return n - (n % 2);
+}
+
 function clampRect(r: CropRect, vw: number, vh: number): CropRect {
-  const x = clamp(r.x, 0, Math.max(0, vw - 1));
-  const y = clamp(r.y, 0, Math.max(0, vh - 1));
+  const x = evenFloor(clamp(r.x, 0, Math.max(0, vw - 1)));
+  const y = evenFloor(clamp(r.y, 0, Math.max(0, vh - 1)));
   return {
     x,
     y,
-    width: clamp(r.width, 1, Math.max(1, vw - x)),
-    height: clamp(r.height, 1, Math.max(1, vh - y)),
+    width: Math.max(2, evenFloor(clamp(r.width, 1, Math.max(1, vw - x)))),
+    height: Math.max(2, evenFloor(clamp(r.height, 1, Math.max(1, vh - y)))),
   };
 }
 

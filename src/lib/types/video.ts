@@ -20,6 +20,8 @@ export interface StreamInfo {
   // Video
   width: number | null;
   height: number | null;
+  /** Clockwise degrees from rotate tag / displaymatrix. */
+  rotation: number | null;
   r_frame_rate: string | null;
   avg_frame_rate: string | null;
   pix_fmt: string | null;
@@ -90,6 +92,23 @@ export interface EnvironmentInfo {
 }
 
 /** Parse a fractional frame-rate string like "30000/1001" → fps number */
+/** True when 90°/270° metadata swaps coded width and height on screen. */
+export function rotationSwapsAxes(degrees: number | null | undefined): boolean {
+  if (degrees == null || !Number.isFinite(degrees)) return false;
+  const q = ((Math.round(degrees / 90) % 4) + 4) % 4;
+  return q === 1 || q === 3;
+}
+
+export function displaySize(
+  width: number | null | undefined,
+  height: number | null | undefined,
+  rotation?: number | null
+): { width: number; height: number } | null {
+  if (!width || !height) return null;
+  if (rotationSwapsAxes(rotation)) return { width: height, height: width };
+  return { width, height };
+}
+
 export function parseFps(raw: string | null): number | null {
   if (!raw) return null;
   const [num, den] = raw.split("/").map(Number);

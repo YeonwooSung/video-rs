@@ -76,6 +76,7 @@ fn parse_stream(v: &Value) -> StreamInfo {
         codec_long_name: v["codec_long_name"].as_str().map(|s| s.to_string()),
         width: v["width"].as_u64().map(|n| n as u32),
         height: v["height"].as_u64().map(|n| n as u32),
+        rotation: parse_rotation(v),
         r_frame_rate: v["r_frame_rate"].as_str().map(|s| s.to_string()),
         avg_frame_rate: v["avg_frame_rate"].as_str().map(|s| s.to_string()),
         pix_fmt: v["pix_fmt"].as_str().map(|s| s.to_string()),
@@ -87,6 +88,23 @@ fn parse_stream(v: &Value) -> StreamInfo {
         language: tag_value(tags, "language"),
         title: tag_value(tags, "title"),
     }
+}
+
+fn parse_rotation(v: &Value) -> Option<f64> {
+    if let Some(list) = v.get("side_data_list").and_then(|x| x.as_array()) {
+        for sd in list {
+            if let Some(r) = sd.get("rotation").and_then(json_f64) {
+                return Some(r);
+            }
+        }
+    }
+    tag_value(v.get("tags"), "rotate").and_then(|s| s.parse().ok())
+}
+
+fn json_f64(v: &Value) -> Option<f64> {
+    v.as_f64()
+        .or_else(|| v.as_i64().map(|n| n as f64))
+        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
 fn tag_value(tags: Option<&Value>, key: &str) -> Option<String> {
@@ -123,5 +141,26 @@ mod tests {
         assert_eq!(info.streams[0].index, 2);
         assert_eq!(info.streams[0].language.as_deref(), Some("eng"));
         assert_eq!(info.streams[0].title.as_deref(), Some("English"));
+    }
+
+    #[test]
+    fn parses_displaymatrix_rotation() {
+        let json = json!({
+            "format": { "filename": "a.mp4", "format_name": "mov", "format_long_name": "QuickTime" },
+            "streams": [{
+                "index": 0,
+                "codec_type": "video",
+                "codec_name": "h264",
+                "width": 640,
+                "height": 480,
+                "side_data_list": [{
+                    "side_data_type": "Display Matrix",
+                    "rotation": -90
+                }]
+            }]
+        });
+        let info = parse_probe_output(&json).unwrap();
+        assert_eq!(info.streams[0].rotation, Some(-90.0));
+        assert_eq!(info.streams[0].display_size(), Some((480, 640)));
     }
 }

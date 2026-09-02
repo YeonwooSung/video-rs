@@ -638,6 +638,27 @@ impl FFmpegService {
         job_id: Option<&str>,
     ) -> Result<(), AppError> {
         let duration = Self::resolve_duration(app, input, total_duration_secs).await;
+        let info = FFprobeService::probe(app, input).await.ok();
+        let audio = info.as_ref().map(|v| {
+            v.streams
+                .iter()
+                .filter(|s| s.codec_type == "audio")
+                .collect::<Vec<_>>()
+        });
+        if let Some(ref tracks) = audio {
+            if tracks.is_empty() {
+                return Err(AppError::InvalidArgument(
+                    "input has no audio stream".into(),
+                ));
+            }
+            if let Some(idx) = stream_index {
+                if !tracks.iter().any(|s| s.index == idx) {
+                    return Err(AppError::InvalidArgument(format!(
+                        "stream {idx} is not an audio track"
+                    )));
+                }
+            }
+        }
 
         let mut builder = FFmpegCommandBuilder::new().input(input);
         if let Some(idx) = stream_index {
