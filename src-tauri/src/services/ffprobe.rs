@@ -32,7 +32,7 @@ impl FFprobeService {
     }
 }
 
-fn parse_probe_output(json: &Value) -> Result<VideoInfo, AppError> {
+pub(crate) fn parse_probe_output(json: &Value) -> Result<VideoInfo, AppError> {
     let format_obj = json
         .get("format")
         .ok_or_else(|| AppError::Ffprobe("missing 'format' key".to_string()))?;

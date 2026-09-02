@@ -3,6 +3,9 @@ mod models;
 mod services;
 mod utils;
 
+#[cfg(test)]
+mod smoke;
+
 use services::job::JobRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

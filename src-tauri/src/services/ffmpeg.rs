@@ -2,6 +2,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::CommandEvent;
 
 use crate::models::error::AppError;
+use crate::models::video_info::VideoInfo;
 use crate::services::encoders::{
     crf_to_videotoolbox_q, escape_filter_path, hwaccel_for_codec, is_bitmap_subtitle,
     software_fallback_codec, subtitle_codec_for_output,
@@ -286,7 +287,7 @@ pub fn build_mux_maps(
     maps
 }
 
-fn build_mux_args(
+pub(crate) fn build_mux_args(
     video_input: &str,
     audio_input: &str,
     output: &str,
@@ -495,6 +496,50 @@ pub fn build_trim_args(
     Ok(builder.output(output).build())
 }
 
+pub fn validate_extract_audio(
+    info: &VideoInfo,
+    stream_index: Option<u32>,
+) -> Result<(), AppError> {
+    let tracks: Vec<_> = info
+        .streams
+        .iter()
+        .filter(|s| s.codec_type == "audio")
+        .collect();
+    if tracks.is_empty() {
+        return Err(AppError::InvalidArgument(
+            "input has no audio stream".into(),
+        ));
+    }
+    if let Some(idx) = stream_index {
+        if !tracks.iter().any(|s| s.index == idx) {
+            return Err(AppError::InvalidArgument(format!(
+                "stream {idx} is not an audio track"
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn build_extract_audio_args(
+    input: &str,
+    output: &str,
+    codec: &str,
+    bitrate: Option<&str>,
+    stream_index: Option<u32>,
+) -> Vec<String> {
+    let mut builder = FFmpegCommandBuilder::new().input(input);
+    if let Some(idx) = stream_index {
+        builder = builder.map(&format!("0:{idx}"));
+    } else {
+        builder = builder.no_video();
+    }
+    builder = builder.audio_codec(codec);
+    if let Some(br) = bitrate {
+        builder = builder.audio_bitrate(br);
+    }
+    builder.output(output).build()
+}
+
 pub fn burn_in_bitmap_graph(subtitle_ordinal: u32) -> String {
     format!("[0:v][0:s:{subtitle_ordinal}]overlay[vout]")
 }
@@ -639,40 +684,11 @@ impl FFmpegService {
     ) -> Result<(), AppError> {
         let duration = Self::resolve_duration(app, input, total_duration_secs).await;
         let info = FFprobeService::probe(app, input).await.ok();
-        let audio = info.as_ref().map(|v| {
-            v.streams
-                .iter()
-                .filter(|s| s.codec_type == "audio")
-                .collect::<Vec<_>>()
-        });
-        if let Some(ref tracks) = audio {
-            if tracks.is_empty() {
-                return Err(AppError::InvalidArgument(
-                    "input has no audio stream".into(),
-                ));
-            }
-            if let Some(idx) = stream_index {
-                if !tracks.iter().any(|s| s.index == idx) {
-                    return Err(AppError::InvalidArgument(format!(
-                        "stream {idx} is not an audio track"
-                    )));
-                }
-            }
+        if let Some(info) = info.as_ref() {
+            validate_extract_audio(info, stream_index)?;
         }
 
-        let mut builder = FFmpegCommandBuilder::new().input(input);
-        if let Some(idx) = stream_index {
-            builder = builder.map(&format!("0:{idx}"));
-        } else {
-            builder = builder.no_video();
-        }
-        builder = builder.audio_codec(codec);
-
-        if let Some(br) = bitrate {
-            builder = builder.audio_bitrate(br);
-        }
-
-        let args = builder.output(output).build();
+        let args = build_extract_audio_args(input, output, codec, bitrate, stream_index);
         Self::run(app, args, duration, job_id).await
     }
 
@@ -925,13 +941,13 @@ impl FFmpegService {
     }
 }
 
-struct BurnTarget {
+pub(crate) struct BurnTarget {
     path: String,
     ordinal: u32,
     bitmap: bool,
 }
 
-fn build_transcode_args(
+pub(crate) fn build_transcode_args(
     input: &str,
     output: &str,
     video_codec: &str,
@@ -980,7 +996,7 @@ fn build_transcode_args(
     builder.output(output).build()
 }
 
-fn build_resize_args(
+pub(crate) fn build_resize_args(
     input: &str,
     output: &str,
     width: i32,
@@ -1225,6 +1241,63 @@ mod tests {
         assert!(args.contains(&"-sn".to_string()));
         assert!(args.windows(2).any(|w| w == ["-map", "0:v?"]));
         assert!(!args.iter().any(|a| a.contains("0:s")));
+    }
+
+    fn stream(index: u32, codec_type: &str) -> crate::models::video_info::StreamInfo {
+        crate::models::video_info::StreamInfo {
+            index,
+            codec_type: codec_type.into(),
+            codec_name: "h264".into(),
+            codec_long_name: None,
+            width: Some(320),
+            height: Some(240),
+            rotation: None,
+            r_frame_rate: None,
+            avg_frame_rate: None,
+            pix_fmt: None,
+            sample_rate: None,
+            channels: None,
+            channel_layout: None,
+            bit_rate: None,
+            duration: None,
+            language: None,
+            title: None,
+        }
+    }
+
+    fn video_info(streams: Vec<crate::models::video_info::StreamInfo>) -> VideoInfo {
+        VideoInfo {
+            format: crate::models::video_info::FormatInfo {
+                filename: "t.mp4".into(),
+                format_name: "mp4".into(),
+                format_long_name: "MP4".into(),
+                duration: Some(2.0),
+                bit_rate: None,
+                size: None,
+            },
+            streams,
+        }
+    }
+
+    #[test]
+    fn validate_extract_audio_rejects_video_only() {
+        let info = video_info(vec![stream(0, "video")]);
+        let err = validate_extract_audio(&info, None).unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::InvalidArgument(ref m) if m == "input has no audio stream"
+        ));
+    }
+
+    #[test]
+    fn validate_extract_audio_checks_absolute_index() {
+        let info = video_info(vec![stream(0, "video"), stream(1, "audio")]);
+        assert!(validate_extract_audio(&info, Some(1)).is_ok());
+        let err = validate_extract_audio(&info, Some(0)).unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::InvalidArgument(ref m) if m == "stream 0 is not an audio track"
+        ));
     }
 
     #[test]

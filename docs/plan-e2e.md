@@ -241,7 +241,7 @@ subs.srt (파일 직접 기록):
 ### Wave 1 — 회귀 (필수)
 
 - **S1.1** `in_silent` probe → `validate_extract_audio(&info, None)` → 내부 문자열 `input has no audio stream`. **ffmpeg 호출 금지**.
-- **S1.2** 같은 info + `Some(1)` → err (`stream 1 is not an audio track`). ffmpeg 금지.
+- **S1.2** 같은 info + `Some(1)` → err. 오디오가 없으면 인덱스를 보기 전에 `input has no audio stream` (앱과 동일). ffmpeg 금지. 잘못된 인덱스는 단위 테스트(`Some(0)` on audio `index==1`).
 - **S1.3** display 전용 사각형 `400x600+0+0` (display 480x640에는 들어가고 coded 640x480에는 안 들어감).
   1. `validate_crop_rect(400, 600, 0, 0, 480, 640)` Ok
   2. `validate_crop_rect(400, 600, 0, 0, 640, 480)` Err
@@ -352,15 +352,15 @@ PowerShell: `$env:VIDEO_RS_SMOKE = "1"` 후 동일 cargo. `package.json`의 env 
 
 ## 10. 작업 순서
 
-- [ ] **Task 1:** `validate_extract_audio` + `build_extract_audio_args` 추출. 단위 테스트 2개. `extract_audio`는 probe 성공 시에만 validate. 메시지 불변.
-- [ ] **Task 2:** `parse_probe_output`, `build_resize_args`, `build_mux_args`, `build_transcode_args`, `BurnTarget`를 `pub(crate)`. 기존 단위 테스트가 그대로 통과하는지 확인.
-- [ ] **Task 3:** `src-tauri/src/smoke/{mod,runner,fixtures}.rs`, `lib.rs`에 `#[cfg(test)] mod smoke`. 게이트 + PATH runner + lavfi 픽스처. `VIDEO_RS_SMOKE` 없이 `cargo test`가 ffmpeg를 부르지 않는지 확인.
-- [ ] **Task 4:** Wave 0.
-- [ ] **Task 5:** Wave 1 회귀 (S1.1–S1.3).
-- [ ] **Task 6:** Wave 2 (S2.3/S2.3b 포함).
-- [ ] **Task 7:** Wave 3.
-- [ ] **Task 8:** CI job `smoke` 추가. 기존 `rust` / `frontend` / `sidecars`는 유지.
-- [ ] **Task 9:** `package.json`에 `test:unit` / `test:smoke`. README는 건드리지 않음.
+- [x] **Task 1:** `validate_extract_audio` + `build_extract_audio_args` 추출. 단위 테스트 2개. `extract_audio`는 probe 성공 시에만 validate. 메시지 불변.
+- [x] **Task 2:** `parse_probe_output`, `build_resize_args`, `build_mux_args`, `build_transcode_args`, `BurnTarget`를 `pub(crate)`. 기존 단위 테스트가 그대로 통과하는지 확인.
+- [x] **Task 3:** `src-tauri/src/smoke/{mod,runner,fixtures}.rs`, `lib.rs`에 `#[cfg(test)] mod smoke`. 게이트 + PATH runner + lavfi 픽스처. `VIDEO_RS_SMOKE` 없이 `cargo test`가 ffmpeg를 부르지 않는지 확인.
+- [x] **Task 4:** Wave 0.
+- [x] **Task 5:** Wave 1 회귀 (S1.1–S1.3).
+- [x] **Task 6:** Wave 2 (S2.3/S2.3b 포함).
+- [x] **Task 7:** Wave 3.
+- [x] **Task 8:** CI job `smoke` 추가. 기존 `rust` / `frontend` / `sidecars`는 유지.
+- [x] **Task 9:** `package.json`에 `test:unit` / `test:smoke`. README는 건드리지 않음.
 
 구현 중 금지: mock `AppHandle`, 픽스처 mp4 커밋, 기본 `cargo test`가 ffmpeg를 요구하게 만들기, Node argv 빌더, `tempfile` crate, 하드웨어 인코더 성공 단언, `input has no audio stream` 문구 변경.
 

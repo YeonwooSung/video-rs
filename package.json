@@ -11,7 +11,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "setup:sidecars": "node scripts/setup-sidecars.js",
-    "setup:sidecars:release": "node scripts/setup-sidecars.js --release"
+    "setup:sidecars:release": "node scripts/setup-sidecars.js --release",
+    "test:unit": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:smoke": "VIDEO_RS_SMOKE=1 cargo test --manifest-path src-tauri/Cargo.toml smoke:: -- --test-threads=1 --nocapture"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
