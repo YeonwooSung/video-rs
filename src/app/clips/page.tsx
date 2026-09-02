@@ -27,6 +27,7 @@ import { formatDuration, parseFps } from "@/lib/types/video";
 import { toastJobDone } from "@/lib/jobToast";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { ClipRangeSlider } from "@/components/media/ClipRangeSlider";
 
 type Clip = { id: string; start: number; end: number };
 
@@ -286,6 +287,26 @@ export default function ClipsPage() {
             <p className="text-xs text-muted-foreground">
               {t("clips.now", { time: currentTime.toFixed(3) })}
             </p>
+            {duration != null && duration > 0 && (
+              <div className="space-y-1">
+                <Label>{t("clips.slider")}</Label>
+                <ClipRangeSlider
+                  duration={duration}
+                  start={Number.isFinite(parseFloat(draftStart)) ? parseFloat(draftStart) : 0}
+                  end={
+                    Number.isFinite(parseFloat(draftEnd))
+                      ? parseFloat(draftEnd)
+                      : duration
+                  }
+                  currentTime={currentTime}
+                  onChange={({ start, end }) => {
+                    setDraftStart(start.toFixed(3));
+                    setDraftEnd(end.toFixed(3));
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">{t("clips.sliderDesc")}</p>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={markStart}>
                 {t("clips.markStart")}
