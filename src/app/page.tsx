@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FolderOpen, Film, Music, Repeat2, Play, Maximize2, Scissors, Layers, RotateCw, Crop, Image, Gauge, Volume2, Stamp, History, Sunset } from "lucide-react";
+import { FolderOpen, Film, Music, Repeat2, Play, Maximize2, Scissors, Clapperboard, Layers, RotateCw, Crop, Image, Gauge, Volume2, Stamp, History, Sunset } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,6 +25,7 @@ const features = [
   { href: "/viewer", icon: Play, titleKey: "home.feat.viewer", descKey: "home.feat.viewerDesc" },
   { href: "/resize", icon: Maximize2, titleKey: "home.feat.resize", descKey: "home.feat.resizeDesc" },
   { href: "/trim", icon: Scissors, titleKey: "home.feat.trim", descKey: "home.feat.trimDesc" },
+  { href: "/clips", icon: Clapperboard, titleKey: "home.feat.clips", descKey: "home.feat.clipsDesc" },
   { href: "/concat", icon: Layers, titleKey: "home.feat.concat", descKey: "home.feat.concatDesc" },
   { href: "/transform", icon: RotateCw, titleKey: "home.feat.rotate", descKey: "home.feat.rotateDesc" },
   { href: "/crop", icon: Crop, titleKey: "home.feat.crop", descKey: "home.feat.cropDesc" },

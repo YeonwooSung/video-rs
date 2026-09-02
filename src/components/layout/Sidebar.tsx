@@ -12,6 +12,7 @@ import {
   Maximize2,
   LayoutDashboard,
   Scissors,
+  Clapperboard,
   Layers,
   RotateCw,
   Crop,
@@ -53,6 +54,7 @@ const groups: { titleKey: string | null; items: NavItem[] }[] = [
     titleKey: "nav.edit",
     items: [
       { href: "/trim", labelKey: "nav.trim", icon: Scissors },
+      { href: "/clips", labelKey: "nav.clips", icon: Clapperboard },
       { href: "/concat", labelKey: "nav.concat", icon: Layers },
       { href: "/crop", labelKey: "nav.crop", icon: Crop },
       { href: "/resize", labelKey: "nav.resize", icon: Maximize2 },
