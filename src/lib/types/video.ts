@@ -29,6 +29,8 @@ export interface StreamInfo {
   channel_layout: string | null;
   bit_rate: string | null;
   duration: string | null;
+  language: string | null;
+  title: string | null;
 }
 
 export interface VideoInfo {
@@ -38,6 +40,7 @@ export interface VideoInfo {
 
 /** Payload emitted by the Rust backend on "ffmpeg-progress" events */
 export interface ProgressPayload {
+  job_id?: string;
   percent: number;
   message: string;
 }
@@ -48,14 +51,42 @@ export interface TranscodeOptions {
   video_codec: string;
   audio_codec: string;
   crf?: number;
+  /** `"copy"` remuxes; `"burn"` hard-burns; omit or `"none"` to drop. */
+  subtitle_mode?: "copy" | "none" | "burn";
+  subtitle_stream_index?: number;
+  /** External subtitle file to burn instead of an embedded stream. */
+  subtitle_input?: string | null;
   duration_secs?: number;
+  job_id?: string;
 }
 
 export interface MuxOptions {
   video_input: string;
   audio_input: string;
   output_path: string;
+  video_streams?: number[];
+  audio_streams?: number[];
+  subtitle_streams?: number[];
+  subtitle_input?: string | null;
+  subtitle_input_streams?: number[];
   duration_secs?: number;
+  job_id?: string;
+}
+
+export interface EnvironmentInfo {
+  os: string;
+  arch: string;
+  target_triple: string;
+  ffmpeg_ok: boolean;
+  ffprobe_ok: boolean;
+  ffmpeg_version: string | null;
+  ffprobe_version: string | null;
+  ffmpeg_source: string | null;
+  ffprobe_source: string | null;
+  ffmpeg_sidecar: string;
+  ffprobe_sidecar: string;
+  hw_encoders: string[];
+  hw_accels: string[];
 }
 
 /** Parse a fractional frame-rate string like "30000/1001" → fps number */
@@ -82,4 +113,17 @@ export function formatDuration(secs: number | null): string {
   const m = Math.floor((secs % 3600) / 60);
   const s = Math.floor(secs % 60);
   return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
+}
+
+export function isCancelledError(err: unknown): boolean {
+  return /cancelled/i.test(String(err));
+}
+
+export function streamLabel(stream: StreamInfo): string {
+  const bits = [`#${stream.index}`, stream.codec_type, stream.codec_name];
+  if (stream.language) bits.push(stream.language);
+  if (stream.title) bits.push(`“${stream.title}”`);
+  if (stream.width && stream.height) bits.push(`${stream.width}×${stream.height}`);
+  if (stream.channels) bits.push(`${stream.channels}ch`);
+  return bits.join(" · ");
 }

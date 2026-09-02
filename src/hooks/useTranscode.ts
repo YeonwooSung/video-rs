@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useProgress } from "./useProgress";
 import type { TranscodeOptions } from "@/lib/types/video";
+import { isCancelledError } from "@/lib/types/video";
 
 export function useTranscode() {
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +16,9 @@ export function useTranscode() {
       const { transcodeVideo } = await import("@/lib/tauri/commands");
       await transcodeVideo(options);
     } catch (err) {
-      setError(String(err));
+      if (!isCancelledError(err)) {
+        setError(String(err));
+      }
     } finally {
       progress.stop();
     }

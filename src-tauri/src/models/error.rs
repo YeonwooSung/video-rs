@@ -23,6 +23,9 @@ pub enum AppError {
 
     #[error("Sidecar error: {0}")]
     Sidecar(String),
+
+    #[error("Operation cancelled")]
+    Cancelled,
 }
 
 /// Implement Serialize so AppError can be returned via Tauri IPC

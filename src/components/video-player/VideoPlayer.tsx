@@ -14,8 +14,10 @@ const VideoPlayerInner = dynamic(() => import("./VideoPlayerInner"), {
 
 export interface VideoPlayerProps {
   src: string;
+  fps?: number;
+  onTimeChange?: (seconds: number) => void;
 }
 
-export function VideoPlayer({ src }: VideoPlayerProps) {
-  return <VideoPlayerInner src={src} />;
+export function VideoPlayer({ src, fps, onTimeChange }: VideoPlayerProps) {
+  return <VideoPlayerInner src={src} fps={fps} onTimeChange={onTimeChange} />;
 }

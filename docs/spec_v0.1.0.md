@@ -2,18 +2,28 @@
 
 ## 1. Overview
 
-Video RS is a desktop video utility application built on **Tauri v2** (Rust native backend) and **Next.js** (TypeScript/React frontend). It bundles FFmpeg and FFprobe as sidecars and exposes five core video operations through a GUI.
+Video RS is a desktop video utility application built on **Tauri v2** (Rust native backend) and **Next.js** (TypeScript/React frontend). It bundles FFmpeg and FFprobe as sidecars and exposes a suite of inspect, convert, and edit operations through a GUI.
 
 ### Feature Set
 
 | Feature | Description |
 |---------|-------------|
 | Analyze | Inspect codec, FPS, resolution, bit rate, and all stream metadata via FFprobe |
-| Extract Audio | Strip audio tracks from a video file into MP3, AAC, FLAC, WAV, or Opus |
-| Transcode | Re-encode video to a different codec/container with quality (CRF) control |
-| Mux | Combine a video-only file and an audio-only file into a single container |
+| Extract Audio / Subtitles | Strip audio tracks (MP3, AAC, FLAC, WAV, Opus) or subtitle streams (SRT, ASS, VTT) |
+| Transcode | Re-encode video to a software or hardware codec/container with quality control; optionally preserve subtitles |
+| Mux | Combine selected video, audio, and subtitle streams from one or more inputs |
 | Resize | Scale video to a target resolution; use `-2` on one axis to preserve aspect ratio |
-| Viewer | Play local video files with adjustable playback rate (0.25×–4×) using video.js |
+| Trim | Cut a start/end range (stream copy or frame-accurate re-encode) |
+| Concat | Join two or more files in order |
+| Rotate / Flip | Rotate 90°/180°/270° and flip axes |
+| Crop | Cut a W×H rectangle at X,Y and re-encode |
+| Speed | Export at a new playback rate (setpts + atempo) |
+| GIF | Palette-based animated GIF from a time range |
+| Fade | Fade video/audio in from black and/or out to black |
+| Volume | Gain in dB or EBU R128 loudnorm |
+| Watermark | Image overlay or drawtext at a corner/center |
+| Jobs | In-app history of recent FFmpeg runs |
+| Viewer | Play local files with rate control, frame step, precise seek, and snapshot |
 
 ---
 
@@ -29,7 +39,8 @@ video-rs/
 │   │   ├── extract/page.tsx    # Extract Audio page
 │   │   ├── transcode/page.tsx  # Transcode / Mux page (tabbed)
 │   │   ├── viewer/page.tsx     # Video Viewer page
-│   │   └── resize/page.tsx     # Resize page
+│   │   ├── resize/page.tsx     # Resize page
+│   │   └── trim/page.tsx       # Trim / cut page
 │   ├── components/
 │   │   ├── layout/Sidebar.tsx  # Left navigation sidebar
 │   │   ├── ui/                 # shadcn/ui component library
@@ -38,6 +49,7 @@ video-rs/
 │   │       └── VideoPlayerInner.tsx  # video.js React component
 │   ├── hooks/
 │   │   ├── useProgress.ts      # Subscribes to "ffmpeg-progress" Tauri events
+│   │   ├── useFfmpegJob.ts     # run/cancel wrapper around useProgress
 │   │   ├── useVideoAnalysis.ts # Wraps analyzeVideo() with loading/error state
 │   │   └── useTranscode.ts     # Wraps transcodeVideo() + progress
 │   └── lib/
@@ -54,18 +66,29 @@ video-rs/
         ├── main.rs             # Binary entry (calls lib::run)
         ├── commands/           # Tauri IPC command handlers
         │   ├── mod.rs
-        │   ├── probe.rs        # analyze_video
-        │   ├── audio.rs        # extract_audio
+        │   ├── probe.rs        # analyze_video, check_environment
+        │   ├── audio.rs        # extract_audio, extract_subtitle
         │   ├── transcode.rs    # transcode_video, mux_video
-        │   └── resize.rs       # resize_video
+        │   ├── resize.rs       # resize_video
+        │   ├── trim.rs         # trim_video
+        │   ├── concat.rs       # concat_videos
+        │   ├── transform.rs    # transform_video
+        │   ├── frame.rs        # export_frame
+        │   ├── reveal.rs       # reveal_path
+        │   └── job.rs          # cancel_job
         ├── services/
         │   ├── ffprobe.rs      # FFprobeService::probe()
-        │   └── ffmpeg.rs       # FFmpegCommandBuilder + FFmpegService
+        │   ├── ffmpeg.rs       # FFmpegCommandBuilder + FFmpegService
+        │   ├── job.rs          # JobRegistry (single in-flight child)
+        │   ├── sidecar.rs      # Sidecar-then-PATH resolver
+        │   ├── encoders.rs     # HW encoder detection + quality mapping
+        │   └── environment.rs  # Platform / sidecar / encoder report
         ├── models/
         │   ├── error.rs        # AppError (thiserror + Serialize for IPC)
-        │   └── video_info.rs   # VideoInfo, FormatInfo, StreamInfo structs
+        │   ├── video_info.rs   # VideoInfo, FormatInfo, StreamInfo structs
+        │   └── environment.rs  # EnvironmentInfo
         └── utils/
-            └── binary.rs       # Sidecar name constants
+            └── binary.rs       # Sidecar names + target triple helpers
 ```
 
 ---
@@ -168,14 +191,27 @@ tauri = { version = "2", features = ["protocol-asset"] }
 Tauri bundles sidecars as `<name>-<target-triple>` binaries. For development on macOS ARM64:
 
 ```bash
-# Creates symlinks in src-tauri/binaries/ pointing to Homebrew FFmpeg
-ln -s /opt/homebrew/bin/ffmpeg  src-tauri/binaries/ffmpeg-aarch64-apple-darwin
-ln -s /opt/homebrew/bin/ffprobe src-tauri/binaries/ffprobe-aarch64-apple-darwin
+# Detects OS/arch, finds FFmpeg on PATH / Homebrew / common prefixes,
+# and writes the correctly named sidecar (symlink on Unix, copy on Windows).
+npm run setup:sidecars
 ```
 
-`src-tauri/.gitignore` excludes `/binaries/` since these symlinks are machine-specific.
+Expected filenames:
 
-For production builds, replace the symlinks with actual statically linked binaries for each target platform.
+| Platform | Sidecar name |
+|----------|----------------|
+| macOS ARM64 | `ffmpeg-aarch64-apple-darwin` |
+| macOS x86_64 | `ffmpeg-x86_64-apple-darwin` |
+| Linux x86_64 | `ffmpeg-x86_64-unknown-linux-gnu` |
+| Linux ARM64 | `ffmpeg-aarch64-unknown-linux-gnu` |
+| Windows x86_64 | `ffmpeg-x86_64-pc-windows-msvc.exe` |
+| Windows ARM64 | `ffmpeg-aarch64-pc-windows-msvc.exe` |
+
+`src-tauri/.gitignore` excludes `/binaries/` since these links/copies are machine-specific.
+
+At runtime the backend tries the bundled sidecar first, then a system `ffmpeg`/`ffprobe` on `PATH`. `check_environment` reports which source was used. Local file playback uses `convertFileSrc()`, which emits `asset://localhost/…` on macOS/Linux and `http://asset.localhost/…` on Windows.
+
+For production builds, replace the setup-script outputs with statically linked binaries for each target platform.
 
 ---
 
@@ -192,6 +228,7 @@ pub enum AppError {
     Parse(#[from] serde_json::Error),
     Io(#[from] std::io::Error),
     Sidecar(String),
+    Cancelled,
 }
 ```
 
@@ -217,7 +254,9 @@ VideoInfo
     ├── channels: Option<u32>               (audio)
     ├── channel_layout: Option<String>      (audio)
     ├── bit_rate: Option<String>
-    └── duration: Option<String>
+    ├── duration: Option<String>
+    ├── language: Option<String>           (tags.language)
+    └── title: Option<String>              (tags.title)
 ```
 
 `StreamInfo::fps()` parses the `r_frame_rate` fraction (`num/den`) into `Option<f64>`.
@@ -249,6 +288,10 @@ A chainable builder for FFmpeg argument lists:
 | `.audio_codec(c)` | `-c:a <c>` |
 | `.no_video()` | `-vn` |
 | `.no_audio()` | `-an` |
+| `.map(spec)` | `-map <spec>` |
+| `.hwaccel(name)` | `-hwaccel <name>` (before `-i`) |
+| `.subtitle_codec(c)` | `-c:s <c>` |
+| `.apply_video_quality(codec, crf)` | `-crf` / `-q:v` / `-cq` / `-global_quality` |
 | `.scale(w, h)` | `-vf scale=<w>:<h>` |
 | `.crf(n)` | `-crf <n>` |
 | `.video_bitrate(b)` | `-b:v <b>` |
@@ -260,18 +303,21 @@ A chainable builder for FFmpeg argument lists:
 
 #### `FFmpegService::run()`
 
-Spawns FFmpeg, streams stderr line-by-line, and parses `time=HH:MM:SS.ms` markers to emit `"ffmpeg-progress"` Tauri events with `{ percent: f64, message: String }`.
+Spawns FFmpeg (bundled sidecar first, then a system binary on `PATH`), registers the child in `JobRegistry`, streams stderr line-by-line, and parses `time=HH:MM:SS.ms` markers to emit `"ffmpeg-progress"` Tauri events with `{ percent: f64, message: String }`. If `duration_secs` is omitted, the input is probed first so a percentage can still be reported.
 
 #### High-level Operations
 
 | Method | Behaviour |
 |--------|-----------|
-| `extract_audio(input, output, codec, bitrate?, duration?)` | `-vn -c:a <codec> [-b:a <bitrate>] output` |
-| `transcode(input, output, v_codec, a_codec, crf?, duration?)` | `-c:v <v> -c:a <a> [-crf <n>] output` |
-| `mux(video_input, audio_input, output, duration?)` | `-map 0:v:0 -map 1:a:0 -c copy output` |
-| `resize(input, output, w, h, duration?)` | `-vf scale=<w>:<h> -c:v libx264 -c:a copy output` |
+| `extract_audio(..., stream_index?, duration?)` | `-map 0:<i>` (or `-vn`) `-c:a <codec> [-b:a <bitrate>] output` |
+| `extract_subtitle(..., stream_index, duration?)` | `-map 0:<i> -c:s <srt\|ass\|webvtt\|copy> output` |
+| `transcode(..., crf?, subtitle_mode?, duration?)` | Optional `-hwaccel`, `-c:v/-c:a`, quality flag, optional `-map 0:s?` |
+| `mux(..., video/audio/subtitle stream lists, subtitle_input?)` | Selected `-map` specs + `-c copy` |
+| `resize(..., video_codec?, crf?, duration?)` | `-vf scale=<w>:<h> -c:v <codec> -c:a copy` |
 
-**Mux note**: explicitly maps `-map 0:v:0` (first video stream from input 0) and `-map 1:a:0` (first audio stream from input 1) to avoid accidentally including unwanted streams.
+**Mux**: empty stream lists still default to `-map 0:v:0` and `-map 1:a:0`. Absolute indices (`0:2`, `1:0`) are used when the UI picks specific tracks. An optional third input is mapped as `2:s:0` (or selected indices).
+
+**Hardware quality mapping**: software uses `-crf`; VideoToolbox uses `-q:v` (CRF 0–51 → 100–20) plus `-allow_sw 1`; NVENC uses `-rc vbr -cq`; QSV uses `-global_quality`.
 
 ### 6.5 IPC Commands
 
@@ -293,6 +339,16 @@ Input:  input_path: String
         output_path: String
         codec: String           ("mp3" | "aac" | "flac" | "pcm_s16le" | "libopus")
         bitrate: Option<String> ("64k" | "128k" | "192k" | "256k" | "320k")
+        stream_index: Option<u32>
+        duration_secs: Option<f64>
+Output: () | AppError
+```
+
+#### `extract_subtitle`
+
+```
+Input:  input_path, output_path: String
+        stream_index: u32
         duration_secs: Option<f64>
 Output: () | AppError
 ```
@@ -302,10 +358,16 @@ Output: () | AppError
 ```
 Input:  TranscodeOptions {
           input_path, output_path: String
-          video_codec: String   ("libx264" | "libx265" | "libvpx-vp9" | "copy")
+          video_codec: String   ("libx264" | "libx265" | "libvpx-vp9" | "copy"
+                                 | "h264_videotoolbox" | "hevc_videotoolbox"
+                                 | "h264_nvenc" | "hevc_nvenc" | "av1_nvenc"
+                                 | "h264_qsv" | "hevc_qsv" | …)
           audio_codec: String   ("aac" | "mp3" | "libopus" | "copy")
-          crf: Option<u8>       (0–51; omitted when video_codec = "copy")
+          crf: Option<u8>       (0–51; remapped per encoder family)
+          subtitle_mode: Option<String>  ("copy" | "burn" | "none")
+          subtitle_stream_index: Option<u32>
           duration_secs: Option<f64>
+          job_id: Option<String>
         }
 Output: () | AppError
 ```
@@ -315,6 +377,9 @@ Output: () | AppError
 ```
 Input:  MuxOptions {
           video_input, audio_input, output_path: String
+          video_streams, audio_streams, subtitle_streams: Option<Vec<u32>>
+          subtitle_input: Option<String>
+          subtitle_input_streams: Option<Vec<u32>>
           duration_secs: Option<f64>
         }
 Output: () | AppError
@@ -326,8 +391,40 @@ Output: () | AppError
 Input:  input_path, output_path: String
         width: i32   (positive, or -2 to auto-calculate)
         height: i32  (positive, or -2 to auto-calculate)
+        video_codec: Option<String>
+        crf: Option<u8>
         duration_secs: Option<f64>
 Output: () | AppError
+```
+
+#### `trim_video`
+
+```
+Input:  input_path, output_path: String
+        start_secs, end_secs: Option<f64>
+        stream_copy: Option<bool>   (default true)
+        duration_secs: Option<f64>
+        job_id: Option<String>
+Output: () | AppError
+```
+
+#### `cancel_job`
+
+```
+Input:  job_id: Option<String>   (omit to cancel every running job)
+Output: () | AppError
+```
+
+Kills the matching FFmpeg child (or all of them). The awaiting operation returns `AppError::Cancelled`.
+
+#### `check_environment`
+
+```
+Input:  —
+Output: EnvironmentInfo { os, arch, target_triple, ffmpeg_ok, ffprobe_ok,
+                          ffmpeg_version, ffprobe_version, ffmpeg_source,
+                          ffprobe_source, ffmpeg_sidecar, ffprobe_sidecar,
+                          hw_encoders, hw_accels }
 ```
 
 Validation rules:
@@ -418,7 +515,7 @@ frame= 1234 fps= 60 ... time=00:01:23.45 bitrate=...
 3. Divides by `total_duration_secs` (passed from frontend via `duration_secs` argument) and clamps to 0–100.
 4. Emits a `"ffmpeg-progress"` event to the frontend window.
 
-If `duration_secs` is not provided, no progress events are emitted (operations still run to completion).
+If `duration_secs` is not provided, the backend probes the input with FFprobe and uses `format.duration`. If probing also fails, the job still runs but no percentage events are emitted.
 
 ---
 
@@ -437,10 +534,8 @@ If `duration_secs` is not provided, no progress events are emitted (operations s
 # 1. Install JS dependencies
 npm install
 
-# 2. Create sidecar symlinks (macOS ARM64)
-mkdir -p src-tauri/binaries
-ln -sf /opt/homebrew/bin/ffmpeg  src-tauri/binaries/ffmpeg-aarch64-apple-darwin
-ln -sf /opt/homebrew/bin/ffprobe src-tauri/binaries/ffprobe-aarch64-apple-darwin
+# 2. Create sidecar binaries for this machine (macOS / Linux / Windows)
+npm run setup:sidecars
 ```
 
 ### Commands
@@ -450,16 +545,31 @@ ln -sf /opt/homebrew/bin/ffprobe src-tauri/binaries/ffprobe-aarch64-apple-darwin
 | `npm run dev` | Start Next.js dev server on `localhost:3000` |
 | `npm run build` | Build static Next.js export to `out/` |
 | `npm run tauri:dev` | Start Tauri dev mode (launches Next.js + Rust hot-reload) |
-| `npm run tauri:build` | Build production `.app` bundle |
+| `npm run tauri:build` | Build production `.app` / installer |
+| `npm run setup:sidecars` | Link or copy FFmpeg/FFprobe with the correct target-triple name |
+| `cargo test` | Rust unit tests (builder, mux maps, progress parse, encoders) |
 | `cargo check` | Type-check Rust crate only |
 
 ---
 
 ## 10. Known Limitations (v0.1.0)
 
-- **Single-stream mux only**: Mux selects the first video stream from the first input and the first audio stream from the second input (`-map 0:v:0 -map 1:a:0`). Multiple streams are not supported.
-- **No subtitle support**: Subtitle streams are ignored in all operations.
-- **No hardware acceleration**: Resize and transcode use software encoders only (`libx264`, `libx265`, `libvpx-vp9`).
-- **Progress requires duration**: Real-time progress percentage is only available when `duration_secs` is supplied by the frontend. Currently no operation automatically fetches duration before processing.
-- **macOS ARM64 only tested**: Sidecar symlinks and the asset URL scheme have only been validated on `aarch64-apple-darwin`. Windows/Linux require platform-specific sidecar binaries.
-- **No cancellation**: There is no mechanism to cancel an in-progress FFmpeg operation. The spawned process runs until completion.
+The original v0.1.0 gaps and the follow-up caveats are implemented.
+
+- **Hardware encoders** are listed only when FFmpeg reports them. If a hardware encode fails at runtime the job is retried with a software encoder (`libx264` / `libx265` / `libvpx-vp9` / `prores_ks`) and a progress message is emitted. VideoToolbox still passes `-allow_sw 1`.
+- **Sidecar binaries are not committed.** `npm run setup:sidecars` writes `ffmpeg-<triple>` / `ffprobe-<triple>`; runtime falls back to `PATH`. CI installs FFmpeg and runs the setup script on Ubuntu, Windows, and macOS.
+- **Concurrent jobs** are keyed by `job_id`. Progress events include the id so each page only updates itself; `cancel_job` can target one id or every running child.
+- **Subtitle burn-in** (`subtitle_mode = "burn"`) hard-codes a selected embedded stream or an external `subtitle_input` file. Text codecs use `-vf subtitles=…:si=N`; bitmap codecs use `-filter_complex [0:v][0:s:N]overlay`. Burn-in requires a real video encoder (`copy` is rejected) and skips `-hwaccel`.
+- **Trim** (`trim_video`) cuts `[start_secs, end_secs)` with either input-side stream copy or post-`-i` re-encode.
+- **Viewer** supports ±1 frame, ±5s jumps, typed seek, Space / arrows / `,` `.` shortcuts, auto-load of the remembered file, and a snapshot at the current timestamp (`export_frame`).
+- **Concat** (`concat_videos`) writes a concat-demuxer list and joins files in order.
+- **Rotate / flip** (`transform_video`) applies `transpose` / `hflip` / `vflip` then re-encodes.
+- **Reveal** (`reveal_path`) selects the file in Finder (macOS), Explorer (Windows), or opens the folder (Linux). Success toasts expose a Show action.
+- **Crop** (`crop_video`) applies `-vf crop=W:H:X:Y` and re-encodes.
+- **GIF** (`export_gif`) uses a palette graph (`fps,scale,palettegen/paletteuse`) over an optional start/end range.
+- **Speed** (`change_speed`) uses `setpts=PTS/rate` and chained `atempo` factors in `[0.5, 2]`.
+- **Volume** (`adjust_volume`) applies `volume=NdB` and/or `loudnorm` while stream-copying video.
+- **Watermark** (`apply_watermark`) overlays an image (`overlay=`) or `drawtext` at tl/tr/bl/br/center.
+- **Jobs** are recorded in the renderer (`localStorage`) whenever `useFfmpegJob` runs. Records may include a `replay` payload so the Jobs page can run the same command again.
+- **Fade** (`fade_video`) applies `fade` / `afade` in and/or out. Fade-out start is `duration - fade_out_secs`.
+- **Dark mode** toggles the `.dark` class (next-themes, default `system`).

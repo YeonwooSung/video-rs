@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FolderOpen, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,27 +14,55 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { openVideoFile, saveFile, resizeVideo } from "@/lib/tauri/commands";
-import { useProgress } from "@/hooks/useProgress";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { JobProgress } from "@/components/job/JobProgress";
+import { checkEnvironment, openVideoFile, resizeVideo, saveFile } from "@/lib/tauri/commands";
+import { useFfmpegJob } from "@/hooks/useFfmpegJob";
+import { toastJobDone } from "@/lib/jobToast";
+import { useRememberedFile } from "@/hooks/useRememberedFile";
+import { useI18n } from "@/lib/i18n";
 
 const PRESETS = [
-  { label: "4K (2160p)", width: 3840, height: 2160 },
-  { label: "1080p", width: 1920, height: 1080 },
-  { label: "720p", width: 1280, height: 720 },
-  { label: "480p", width: 854, height: 480 },
-  { label: "360p", width: 640, height: 360 },
-  { label: "Width 1920 (keep ratio)", width: 1920, height: -2 },
-  { label: "Width 1280 (keep ratio)", width: 1280, height: -2 },
+  { labelKey: "resize.preset.4k", width: 3840, height: 2160 },
+  { labelKey: "resize.preset.1080p", width: 1920, height: 1080 },
+  { labelKey: "resize.preset.720p", width: 1280, height: 720 },
+  { labelKey: "resize.preset.480p", width: 854, height: 480 },
+  { labelKey: "resize.preset.360p", width: 640, height: 360 },
+  { labelKey: "resize.preset.keep1920", width: 1920, height: -2 },
+  { labelKey: "resize.preset.keep1280", width: 1280, height: -2 },
 ];
 
+const SOFTWARE_CODECS = ["libx264", "libx265", "libvpx-vp9"];
+
 export default function ResizePage() {
-  const [inputPath, setInputPath] = useState("");
+  const { t } = useI18n();
+  const [inputPath, setInputPath] = useRememberedFile();
   const [outputPath, setOutputPath] = useState("");
   const [width, setWidth] = useState("1920");
   const [height, setHeight] = useState("1080");
-  const [isRunning, setIsRunning] = useState(false);
-  const progress = useProgress();
+  const [codec, setCodec] = useState("libx264");
+  const [crf, setCrf] = useState("23");
+  const [hwEncoders, setHwEncoders] = useState<string[]>([]);
+  const job = useFfmpegJob("Resize");
+
+  useEffect(() => {
+    checkEnvironment()
+      .then((env) => setHwEncoders(env.hw_encoders))
+      .catch(() => setHwEncoders([]));
+  }, []);
+
+  const suggestedOutput = inputPath
+    ? `${inputPath.replace(/\.[^.]+$/, "")}_resized.mp4`
+    : "";
+  const resolvedOutput = outputPath || suggestedOutput;
 
   const handleBrowseInput = async () => {
     const path = await openVideoFile();
@@ -56,52 +84,99 @@ export default function ResizePage() {
   };
 
   const handleResize = async () => {
-    if (!inputPath || !outputPath) { toast.error("Set input and output paths"); return; }
-    const w = parseInt(width);
-    const h = parseInt(height);
-    if (isNaN(w) || isNaN(h)) { toast.error("Invalid width/height"); return; }
-    if (w <= 0 && w !== -2) { toast.error("Width must be positive, or -2 to auto-calculate"); return; }
-    if (h <= 0 && h !== -2) { toast.error("Height must be positive, or -2 to auto-calculate"); return; }
-    if (w === -2 && h === -2) { toast.error("At least one dimension must be a positive value"); return; }
+    if (!inputPath || !resolvedOutput) {
+      toast.error(t("common.setPaths"));
+      return;
+    }
+    const w = parseInt(width, 10);
+    const h = parseInt(height, 10);
+    if (isNaN(w) || isNaN(h)) {
+      toast.error(t("resize.invalidDim"));
+      return;
+    }
+    if (w <= 0 && w !== -2) {
+      toast.error(t("resize.widthRule"));
+      return;
+    }
+    if (h <= 0 && h !== -2) {
+      toast.error(t("resize.heightRule"));
+      return;
+    }
+    if (w === -2 && h === -2) {
+      toast.error(t("resize.onePositive"));
+      return;
+    }
 
-    setIsRunning(true);
-    await progress.start();
-    try {
-      await resizeVideo({ inputPath, outputPath, width: w, height: h });
-      toast.success("Resize complete", { description: outputPath });
-    } catch (err) {
-      toast.error("Resize failed", { description: String(err) });
-    } finally {
-      setIsRunning(false);
-      progress.stop();
+    const result = await job.runJob(
+      (jobId) =>
+        resizeVideo({
+          inputPath,
+          outputPath: resolvedOutput,
+          width: w,
+          height: h,
+          videoCodec: codec,
+          crf: parseInt(crf, 10),
+          jobId,
+        }),
+      {
+        outputPath: resolvedOutput,
+        replay: {
+          command: "resize_video",
+          args: {
+            input_path: inputPath,
+            output_path: resolvedOutput,
+            width: w,
+            height: h,
+            video_codec: codec,
+            crf: parseInt(crf, 10),
+            duration_secs: null,
+            job_id: null,
+          },
+        },
+      }
+    );
+    if (result.ok) {
+      toastJobDone(t("resize.done"), resolvedOutput);
+    } else if (result.cancelled) {
+      toast.message(t("common.cancelled"));
+    } else {
+      toast.error(t("resize.failed"), { description: result.error });
     }
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="max-w-2xl space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Resize Video</h2>
-        <p className="text-muted-foreground">
-          Scale video resolution using FFmpeg. Use -2 for height to preserve aspect ratio.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("resize.title")}</h2>
+        <p className="text-muted-foreground">{t("resize.blurb")}</p>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Files</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>{t("common.files")}</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1">
-            <Label>Input Video</Label>
+            <Label>{t("common.inputVideo")}</Label>
             <div className="flex gap-2">
-              <Input value={inputPath} onChange={e => setInputPath(e.target.value)} placeholder="/path/to/video.mp4" />
+              <Input
+                value={inputPath}
+                onChange={(e) => setInputPath(e.target.value)}
+                placeholder="/path/to/video.mp4"
+              />
               <Button variant="outline" size="icon" onClick={handleBrowseInput}>
                 <FolderOpen className="h-4 w-4" />
               </Button>
             </div>
           </div>
           <div className="space-y-1">
-            <Label>Output Video</Label>
+            <Label>{t("common.outputVideo")}</Label>
             <div className="flex gap-2">
-              <Input value={outputPath} onChange={e => setOutputPath(e.target.value)} placeholder="/path/to/output.mp4" />
+              <Input
+                value={resolvedOutput}
+                onChange={(e) => setOutputPath(e.target.value)}
+                placeholder="/path/to/output.mp4"
+              />
               <Button variant="outline" size="icon" onClick={handleBrowseOutput}>
                 <FolderOpen className="h-4 w-4" />
               </Button>
@@ -112,41 +187,39 @@ export default function ResizePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Resolution</CardTitle>
-          <CardDescription>
-            Use -2 for height to auto-calculate keeping aspect ratio.
-          </CardDescription>
+          <CardTitle>{t("resize.resolution")}</CardTitle>
+          <CardDescription>{t("resize.resDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {PRESETS.map((p) => (
               <Badge
-                key={p.label}
+                key={p.labelKey}
                 variant="outline"
                 className="cursor-pointer hover:bg-accent"
                 onClick={() => applyPreset(p.width, p.height)}
               >
-                {p.label}
+                {t(p.labelKey)}
               </Badge>
             ))}
           </div>
 
           <div className="flex gap-4">
             <div className="space-y-1">
-              <Label>Width (px)</Label>
+              <Label>{t("resize.width")}</Label>
               <Input
                 type="number"
                 value={width}
-                onChange={e => setWidth(e.target.value)}
+                onChange={(e) => setWidth(e.target.value)}
                 className="w-28"
               />
             </div>
             <div className="space-y-1">
-              <Label>Height (px, -2 = auto)</Label>
+              <Label>{t("resize.height")}</Label>
               <Input
                 type="number"
                 value={height}
-                onChange={e => setHeight(e.target.value)}
+                onChange={(e) => setHeight(e.target.value)}
                 className="w-28"
               />
             </div>
@@ -154,22 +227,66 @@ export default function ResizePage() {
         </CardContent>
       </Card>
 
-      {progress.isRunning && (
-        <Card>
-          <CardContent className="pt-6 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Resizing…</span>
-              <span>{progress.percent.toFixed(0)}%</span>
-            </div>
-            <Progress value={progress.percent} />
-            <p className="text-xs text-muted-foreground truncate">{progress.message}</p>
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("resize.encoder")}</CardTitle>
+          <CardDescription>{t("resize.encoderDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label>{t("resize.videoCodec")}</Label>
+            <Select value={codec} onValueChange={(v) => v && setCodec(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>{t("resize.software")}</SelectLabel>
+                  {SOFTWARE_CODECS.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                {hwEncoders.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>{t("resize.hardware")}</SelectLabel>
+                    {hwEncoders.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>{t("resize.quality")}</Label>
+            <Input
+              type="number"
+              min={0}
+              max={51}
+              value={crf}
+              onChange={(e) => setCrf(e.target.value)}
+              className="w-24"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {job.isRunning && (
+        <JobProgress
+          percent={job.percent}
+          message={job.message}
+          label={t("resize.running")}
+          onCancel={job.cancel}
+        />
       )}
 
-      <Button onClick={handleResize} disabled={isRunning} className="gap-2">
+      <Button onClick={handleResize} disabled={job.isRunning} className="gap-2">
         <Maximize2 className="h-4 w-4" />
-        {isRunning ? "Resizing…" : "Resize Video"}
+        {job.isRunning ? t("resize.running") : t("resize.run")}
       </Button>
     </div>
   );

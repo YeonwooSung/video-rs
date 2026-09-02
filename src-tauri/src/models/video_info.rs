@@ -21,7 +21,7 @@ pub struct FormatInfo {
     pub size: Option<u64>,
 }
 
-/// Represents a single A/V stream inside the container
+/// Represents a single A/V/subtitle stream inside the container
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamInfo {
     pub index: u32,
@@ -41,6 +41,10 @@ pub struct StreamInfo {
     pub bit_rate: Option<String>,
     // Duration in seconds (may differ from container)
     pub duration: Option<String>,
+    /// ISO 639 language tag from stream tags, if present
+    pub language: Option<String>,
+    /// Human-readable stream title from tags, if present
+    pub title: Option<String>,
 }
 
 impl StreamInfo {

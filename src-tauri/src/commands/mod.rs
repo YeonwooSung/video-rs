@@ -1,4 +1,16 @@
 pub mod audio;
+pub mod concat;
+pub mod crop;
+pub mod fade;
+pub mod frame;
+pub mod gif;
+pub mod job;
 pub mod probe;
 pub mod resize;
+pub mod reveal;
+pub mod speed;
 pub mod transcode;
+pub mod transform;
+pub mod trim;
+pub mod volume;
+pub mod watermark;

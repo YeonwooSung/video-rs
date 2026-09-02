@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FolderOpen, Film, Music, Repeat2, Play, Maximize2 } from "lucide-react";
+import { FolderOpen, Film, Music, Repeat2, Play, Maximize2, Scissors, Layers, RotateCw, Crop, Image, Gauge, Volume2, Stamp, History, Sunset } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,96 +11,151 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { openVideoFile } from "@/lib/tauri/commands";
+import { Badge } from "@/components/ui/badge";
+import { checkEnvironment, openVideoFile } from "@/lib/tauri/commands";
+import type { EnvironmentInfo } from "@/lib/types/video";
+import { hrefWithFile, rememberFile, useRememberedFile } from "@/hooks/useRememberedFile";
+import { useI18n } from "@/lib/i18n";
 import Link from "next/link";
 
 const features = [
-  {
-    href: "/probe",
-    icon: Film,
-    title: "Analyze",
-    description: "Inspect codec, FPS, resolution, and stream metadata",
-  },
-  {
-    href: "/extract",
-    icon: Music,
-    title: "Extract Audio",
-    description: "Strip audio tracks to MP3, AAC, FLAC, or WAV",
-  },
-  {
-    href: "/transcode",
-    icon: Repeat2,
-    title: "Transcode / Mux",
-    description: "Re-encode or remux video into different formats",
-  },
-  {
-    href: "/viewer",
-    icon: Play,
-    title: "Viewer",
-    description: "Play video with speed control, seek, and skip",
-  },
-  {
-    href: "/resize",
-    icon: Maximize2,
-    title: "Resize",
-    description: "Scale resolution with preset or custom dimensions",
-  },
+  { href: "/probe", icon: Film, titleKey: "home.feat.analyze", descKey: "home.feat.analyzeDesc" },
+  { href: "/extract", icon: Music, titleKey: "home.feat.extract", descKey: "home.feat.extractDesc" },
+  { href: "/transcode", icon: Repeat2, titleKey: "home.feat.transcode", descKey: "home.feat.transcodeDesc" },
+  { href: "/viewer", icon: Play, titleKey: "home.feat.viewer", descKey: "home.feat.viewerDesc" },
+  { href: "/resize", icon: Maximize2, titleKey: "home.feat.resize", descKey: "home.feat.resizeDesc" },
+  { href: "/trim", icon: Scissors, titleKey: "home.feat.trim", descKey: "home.feat.trimDesc" },
+  { href: "/concat", icon: Layers, titleKey: "home.feat.concat", descKey: "home.feat.concatDesc" },
+  { href: "/transform", icon: RotateCw, titleKey: "home.feat.rotate", descKey: "home.feat.rotateDesc" },
+  { href: "/crop", icon: Crop, titleKey: "home.feat.crop", descKey: "home.feat.cropDesc" },
+  { href: "/speed", icon: Gauge, titleKey: "home.feat.speed", descKey: "home.feat.speedDesc" },
+  { href: "/gif", icon: Image, titleKey: "home.feat.gif", descKey: "home.feat.gifDesc" },
+  { href: "/volume", icon: Volume2, titleKey: "home.feat.volume", descKey: "home.feat.volumeDesc" },
+  { href: "/fade", icon: Sunset, titleKey: "home.feat.fade", descKey: "home.feat.fadeDesc" },
+  { href: "/watermark", icon: Stamp, titleKey: "home.feat.watermark", descKey: "home.feat.watermarkDesc" },
+  { href: "/jobs", icon: History, titleKey: "home.feat.jobs", descKey: "home.feat.jobsDesc" },
 ];
 
 export default function HomePage() {
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const { t } = useI18n();
+  const [selectedFile, setSelectedFile] = useRememberedFile();
+  const [env, setEnv] = useState<EnvironmentInfo | null>(null);
+  const [envError, setEnvError] = useState<string | null>(null);
+
+  useEffect(() => {
+    checkEnvironment()
+      .then(setEnv)
+      .catch((err) => setEnvError(String(err)));
+  }, []);
 
   const handleSelectFile = async () => {
     try {
       const path = await openVideoFile();
       if (path) {
+        rememberFile(path);
         setSelectedFile(path);
-        toast.success("File selected", { description: path });
+        toast.success(t("home.fileSelected"), { description: path });
       }
     } catch (err) {
-      toast.error("Failed to open file picker", { description: String(err) });
+      toast.error(t("home.openFailed"), { description: String(err) });
     }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Video RS</h2>
-        <p className="text-muted-foreground">
-          A lightweight video utility suite powered by Rust + FFmpeg.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("home.title")}</h2>
+        <p className="text-muted-foreground">{t("home.blurb")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Select a Video File</CardTitle>
-          <CardDescription>
-            Choose a video file to get started with any of the tools below.
-          </CardDescription>
+          <CardTitle>{t("home.selectTitle")}</CardTitle>
+          <CardDescription>{t("home.selectDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex items-center gap-4">
           <Button onClick={handleSelectFile} className="gap-2">
             <FolderOpen className="h-4 w-4" />
-            Open File
+            {t("home.openFile")}
           </Button>
           {selectedFile && (
-            <p className="truncate text-sm text-muted-foreground max-w-md">
+            <p className="max-w-md truncate text-sm text-muted-foreground">
               {selectedFile}
             </p>
           )}
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("home.env")}</CardTitle>
+          <CardDescription>{t("home.envDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {envError && (
+            <p className="text-sm text-destructive">{envError}</p>
+          )}
+          {env && (
+            <>
+              <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-muted-foreground">{t("home.platform")}</dt>
+                  <dd className="font-medium">
+                    {env.os}/{env.arch}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">{t("home.triple")}</dt>
+                  <dd className="font-medium">{env.target_triple}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">{t("home.sidecarNames")}</dt>
+                  <dd className="font-medium">{env.ffmpeg_sidecar}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">{t("home.ffmpeg")}</dt>
+                  <dd className="font-medium">
+                    {env.ffmpeg_ok ? t("home.ready") : t("home.missing")}
+                    {env.ffmpeg_source ? ` (${env.ffmpeg_source})` : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">{t("home.ffprobe")}</dt>
+                  <dd className="font-medium">
+                    {env.ffprobe_ok ? t("home.ready") : t("home.missing")}
+                    {env.ffprobe_source ? ` (${env.ffprobe_source})` : ""}
+                  </dd>
+                </div>
+              </dl>
+              {env.ffmpeg_version && (
+                <p className="truncate text-xs text-muted-foreground">{env.ffmpeg_version}</p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {env.hw_encoders.length === 0 ? (
+                  <Badge variant="outline">{t("home.noHw")}</Badge>
+                ) : (
+                  env.hw_encoders.map((name) => (
+                    <Badge key={name} variant="secondary">
+                      {name}
+                    </Badge>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map(({ href, icon: Icon, title, description }) => (
-          <Link key={href} href={href}>
-            <Card className="cursor-pointer transition-colors hover:bg-accent/50 h-full">
+        {features.map(({ href, icon: Icon, titleKey, descKey }) => (
+          <Link key={href} href={hrefWithFile(href, selectedFile)}>
+            <Card className="h-full cursor-pointer transition-colors hover:bg-accent/50">
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Icon className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-base">{title}</CardTitle>
+                  <CardTitle className="text-base">{t(titleKey)}</CardTitle>
                 </div>
-                <CardDescription>{description}</CardDescription>
+                <CardDescription>{t(descKey)}</CardDescription>
               </CardHeader>
             </Card>
           </Link>

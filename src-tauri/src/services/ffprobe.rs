@@ -1,10 +1,9 @@
 use serde_json::Value;
 use tauri::AppHandle;
-use tauri_plugin_shell::ShellExt;
 
 use crate::models::error::AppError;
 use crate::models::video_info::{FormatInfo, StreamInfo, VideoInfo};
-use crate::utils::binary::FFPROBE_SIDECAR;
+use crate::services::sidecar::output_ffprobe;
 
 pub struct FFprobeService;
 
@@ -21,21 +20,14 @@ impl FFprobeService {
             file_path,
         ];
 
-        let output = app
-            .shell()
-            .sidecar(FFPROBE_SIDECAR)
-            .map_err(|e| AppError::Sidecar(e.to_string()))?
-            .args(args)
-            .output()
-            .await
-            .map_err(|e| AppError::Ffprobe(e.to_string()))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            return Err(AppError::Ffprobe(stderr));
+        let (ok, stdout, _source) = output_ffprobe(app, &args).await?;
+        if !ok {
+            return Err(AppError::Ffprobe(
+                "ffprobe exited with a non-zero status".into(),
+            ));
         }
 
-        let json: Value = serde_json::from_slice(&output.stdout)?;
+        let json: Value = serde_json::from_str(&stdout)?;
         parse_probe_output(&json)
     }
 }
@@ -76,6 +68,7 @@ fn parse_probe_output(json: &Value) -> Result<VideoInfo, AppError> {
 }
 
 fn parse_stream(v: &Value) -> StreamInfo {
+    let tags = v.get("tags");
     StreamInfo {
         index: v["index"].as_u64().unwrap_or(0) as u32,
         codec_type: v["codec_type"].as_str().unwrap_or("unknown").to_string(),
@@ -91,5 +84,44 @@ fn parse_stream(v: &Value) -> StreamInfo {
         channel_layout: v["channel_layout"].as_str().map(|s| s.to_string()),
         bit_rate: v["bit_rate"].as_str().map(|s| s.to_string()),
         duration: v["duration"].as_str().map(|s| s.to_string()),
+        language: tag_value(tags, "language"),
+        title: tag_value(tags, "title"),
+    }
+}
+
+fn tag_value(tags: Option<&Value>, key: &str) -> Option<String> {
+    tags.and_then(|t| t.get(key))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_language_and_title_tags() {
+        let json = json!({
+            "format": {
+                "filename": "a.mkv",
+                "format_name": "matroska",
+                "format_long_name": "Matroska",
+                "duration": "12.5",
+                "bit_rate": "1000",
+                "size": "2048"
+            },
+            "streams": [{
+                "index": 2,
+                "codec_type": "subtitle",
+                "codec_name": "subrip",
+                "tags": { "language": "eng", "title": "English" }
+            }]
+        });
+        let info = parse_probe_output(&json).unwrap();
+        assert_eq!(info.format.duration, Some(12.5));
+        assert_eq!(info.streams[0].index, 2);
+        assert_eq!(info.streams[0].language.as_deref(), Some("eng"));
+        assert_eq!(info.streams[0].title.as_deref(), Some("English"));
     }
 }

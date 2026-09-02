@@ -11,7 +11,7 @@ export interface ProgressState {
 
 /**
  * Subscribe to the "ffmpeg-progress" Tauri event emitted by the Rust backend.
- * Returns the latest progress state and a reset function.
+ * When `jobId` is set, events from other concurrent jobs are ignored.
  */
 export function useProgress() {
   const [state, setState] = useState<ProgressState>({
@@ -21,16 +21,23 @@ export function useProgress() {
   });
 
   const unlistenRef = useRef<(() => void) | null>(null);
+  const jobIdRef = useRef<string | null>(null);
 
-  const start = async () => {
+  const start = async (jobId?: string) => {
     setState({ percent: 0, message: "", isRunning: true });
+    jobIdRef.current = jobId ?? null;
 
     const { listen } = await import("@tauri-apps/api/event");
     const unlisten = await listen<ProgressPayload>("ffmpeg-progress", (event) => {
+      const incoming = event.payload.job_id;
+      const expected = jobIdRef.current;
+      if (expected && incoming && incoming !== expected) {
+        return;
+      }
       setState({
         percent: event.payload.percent,
         message: event.payload.message,
-        isRunning: event.payload.percent < 100,
+        isRunning: event.payload.percent < 100 || event.payload.message.includes("retrying"),
       });
     });
     unlistenRef.current = unlisten;
@@ -39,6 +46,7 @@ export function useProgress() {
   const stop = () => {
     unlistenRef.current?.();
     unlistenRef.current = null;
+    jobIdRef.current = null;
     setState((prev) => ({ ...prev, isRunning: false }));
   };
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { FolderOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { FolderOpen, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,47 +12,97 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { openVideoFile } from "@/lib/tauri/commands";
+import {
+  analyzeVideo,
+  exportFrame,
+  openVideoFile,
+  saveFile,
+  toAssetUrl,
+} from "@/lib/tauri/commands";
 import { VideoPlayer } from "@/components/video-player/VideoPlayer";
-
-/** Convert a filesystem path to a Tauri asset URL (v2 compatible). */
-async function toAssetUrl(path: string): Promise<string> {
-  const { convertFileSrc } = await import("@tauri-apps/api/core");
-  return convertFileSrc(path);
-}
+import { useRememberedFile } from "@/hooks/useRememberedFile";
+import { useFfmpegJob } from "@/hooks/useFfmpegJob";
+import { parseFps } from "@/lib/types/video";
+import { toastJobDone } from "@/lib/jobToast";
+import { JobProgress } from "@/components/job/JobProgress";
+import { useI18n } from "@/lib/i18n";
 
 export default function ViewerPage() {
-  const [filePath, setFilePath] = useState("");
+  const { t } = useI18n();
+  const [filePath, setFilePath] = useRememberedFile();
   const [activeSrc, setActiveSrc] = useState("");
+  const [fps, setFps] = useState(30);
+  const [currentTime, setCurrentTime] = useState(0);
+  const job = useFfmpegJob("Snapshot");
+
+  useEffect(() => {
+    if (!filePath) return;
+    analyzeVideo(filePath)
+      .then((info) => {
+        const video = info.streams.find((s) => s.codec_type === "video");
+        const parsed = parseFps(video?.r_frame_rate ?? null);
+        if (parsed && parsed > 0) setFps(parsed);
+      })
+      .catch(() => setFps(30));
+    toAssetUrl(filePath)
+      .then(setActiveSrc)
+      .catch((err) => toast.error(t("viewer.loadFailed"), { description: String(err) }));
+  }, [filePath, t]);
 
   const handleBrowse = async () => {
     const path = await openVideoFile();
     if (path) setFilePath(path);
   };
 
-  const handleLoad = async () => {
-    const trimmed = filePath.trim();
-    if (!trimmed) return;
-    const url = await toAssetUrl(trimmed);
-    setActiveSrc(url);
+  const handleSnapshot = async () => {
+    if (!filePath) {
+      toast.error(t("viewer.loadFirst"));
+      return;
+    }
+    const defaultName = `${filePath.replace(/\.[^.]+$/, "")}_${currentTime.toFixed(3)}.png`;
+    const output = await saveFile(defaultName.split(/[/\\]/).pop() ?? "frame.png", ["png", "jpg"]);
+    if (!output) return;
+    const result = await job.runJob(
+      (jobId) =>
+        exportFrame({
+          inputPath: filePath,
+          outputPath: output,
+          atSecs: currentTime,
+          jobId,
+        }),
+      {
+        outputPath: output,
+        replay: {
+          command: "export_frame",
+          args: {
+            input_path: filePath,
+            output_path: output,
+            at_secs: currentTime,
+            job_id: null,
+          },
+        },
+      }
+    );
+    if (result.ok) {
+      toastJobDone(t("viewer.frameSaved"), output);
+    } else if (result.cancelled) {
+      toast.message(t("viewer.exportCancelled"));
+    } else {
+      toast.error(t("viewer.exportFailed"), { description: result.error });
+    }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Video Viewer</h2>
-        <p className="text-muted-foreground">
-          Play video with speed control, seek, frame skip, and playback rate.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("viewer.title")}</h2>
+        <p className="text-muted-foreground">{t("viewer.blurb")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Open Video</CardTitle>
-          <CardDescription>
-            Supports MP4, MKV, MOV, WebM, AVI, and more.
-          </CardDescription>
+          <CardTitle>{t("viewer.open")}</CardTitle>
+          <CardDescription>{t("viewer.openDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
@@ -65,20 +116,30 @@ export default function ViewerPage() {
               <FolderOpen className="h-4 w-4" />
             </Button>
           </div>
-          <Button onClick={handleLoad} disabled={!filePath.trim()}>
-            Load Video
-          </Button>
         </CardContent>
       </Card>
 
       {activeSrc && (
         <Card>
-          <CardContent className="pt-6">
-            <VideoPlayer src={activeSrc} />
-            <p className="mt-2 text-xs text-muted-foreground truncate">
-              Use the playback rate control in the player toolbar to adjust speed.
-              Right-click the progress bar to seek precisely.
-            </p>
+          <CardContent className="space-y-3 pt-6">
+            <VideoPlayer src={activeSrc} fps={fps} onTimeChange={setCurrentTime} />
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handleSnapshot}
+              disabled={job.isRunning}
+            >
+              <Camera className="h-4 w-4" />
+              {t("viewer.saveFrame", { time: currentTime.toFixed(3) })}
+            </Button>
+            {job.isRunning && (
+              <JobProgress
+                percent={job.percent}
+                message={job.message}
+                label={t("viewer.exporting")}
+                onCancel={job.cancel}
+              />
+            )}
           </CardContent>
         </Card>
       )}

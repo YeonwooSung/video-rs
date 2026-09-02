@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { toast } from "sonner";
 import { FolderOpen, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -17,15 +15,18 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { openVideoFile } from "@/lib/tauri/commands";
 import { useVideoAnalysis } from "@/hooks/useVideoAnalysis";
+import { useRememberedFile } from "@/hooks/useRememberedFile";
 import {
   formatBytes,
   formatDuration,
   parseFps,
   type StreamInfo,
 } from "@/lib/types/video";
+import { useI18n } from "@/lib/i18n";
 
 export default function ProbePage() {
-  const [filePath, setFilePath] = useState("");
+  const { t } = useI18n();
+  const [filePath, setFilePath] = useRememberedFile();
   const { analyze, data, isLoading, error, reset } = useVideoAnalysis();
 
   const handleBrowse = async () => {
@@ -35,29 +36,27 @@ export default function ProbePage() {
 
   const handleAnalyze = async () => {
     if (!filePath.trim()) {
-      toast.error("Please select a file first");
+      toast.error(t("probe.needFile"));
       return;
     }
     reset();
     try {
       await analyze(filePath);
     } catch (err) {
-      toast.error("Analysis failed", { description: String(err) });
+      toast.error(t("probe.failed"), { description: String(err) });
     }
   };
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Analyze Video</h2>
-        <p className="text-muted-foreground">
-          Inspect codec, FPS, resolution, and stream metadata via FFprobe.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("probe.title")}</h2>
+        <p className="text-muted-foreground">{t("probe.blurb")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>File Selection</CardTitle>
+          <CardTitle>{t("probe.file")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
@@ -69,12 +68,12 @@ export default function ProbePage() {
             />
             <Button variant="outline" onClick={handleBrowse} className="gap-2">
               <FolderOpen className="h-4 w-4" />
-              Browse
+              {t("common.browse")}
             </Button>
           </div>
           <Button onClick={handleAnalyze} disabled={isLoading} className="gap-2">
             <Search className="h-4 w-4" />
-            {isLoading ? "Analyzing…" : "Analyze"}
+            {isLoading ? t("probe.analyzing") : t("probe.analyze")}
           </Button>
         </CardContent>
       </Card>
@@ -89,21 +88,21 @@ export default function ProbePage() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Container / Format</CardTitle>
+              <CardTitle>{t("probe.container")}</CardTitle>
               <CardDescription>{data.format.format_long_name}</CardDescription>
             </CardHeader>
             <CardContent>
               <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
-                <DataRow label="Format" value={data.format.format_name} />
-                <DataRow label="Duration" value={formatDuration(data.format.duration)} />
-                <DataRow label="Bit Rate" value={data.format.bit_rate ? `${Math.round(data.format.bit_rate / 1000)} kbps` : "—"} />
-                <DataRow label="File Size" value={formatBytes(data.format.size)} />
+                <DataRow label={t("probe.format")} value={data.format.format_name} />
+                <DataRow label={t("probe.duration")} value={formatDuration(data.format.duration)} />
+                <DataRow label={t("probe.bitRate")} value={data.format.bit_rate ? `${Math.round(data.format.bit_rate / 1000)} kbps` : "—"} />
+                <DataRow label={t("probe.fileSize")} value={formatBytes(data.format.size)} />
               </dl>
             </CardContent>
           </Card>
 
           <div className="space-y-3">
-            <h3 className="font-semibold">Streams ({data.streams.length})</h3>
+            <h3 className="font-semibold">{t("probe.streams", { count: data.streams.length })}</h3>
             {data.streams.map((s) => (
               <StreamCard key={s.index} stream={s} />
             ))}
@@ -124,6 +123,7 @@ function DataRow({ label, value }: { label: string; value: string }) {
 }
 
 function StreamCard({ stream }: { stream: StreamInfo }) {
+  const { t } = useI18n();
   const isVideo = stream.codec_type === "video";
   const fps = isVideo ? parseFps(stream.r_frame_rate) : null;
 
@@ -131,12 +131,13 @@ function StreamCard({ stream }: { stream: StreamInfo }) {
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <Badge variant={isVideo ? "default" : "secondary"}>
+          <Badge variant={isVideo ? "default" : stream.codec_type === "subtitle" ? "outline" : "secondary"}>
             {stream.codec_type}
           </Badge>
           <span className="font-medium text-sm">
-            Stream #{stream.index} — {stream.codec_name}
+            {t("probe.stream", { index: stream.index, codec: stream.codec_name })}
           </span>
+          {stream.language && <Badge variant="outline">{stream.language}</Badge>}
         </div>
         {stream.codec_long_name && (
           <CardDescription>{stream.codec_long_name}</CardDescription>
@@ -146,17 +147,19 @@ function StreamCard({ stream }: { stream: StreamInfo }) {
       <CardContent className="pt-3">
         <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
           {isVideo && stream.width && stream.height && (
-            <DataRow label="Resolution" value={`${stream.width}×${stream.height}`} />
+            <DataRow label={t("probe.resolution")} value={`${stream.width}×${stream.height}`} />
           )}
           {fps != null && (
-            <DataRow label="FPS" value={fps.toFixed(3)} />
+            <DataRow label={t("probe.fps")} value={fps.toFixed(3)} />
           )}
-          {stream.pix_fmt && <DataRow label="Pixel Format" value={stream.pix_fmt} />}
-          {stream.sample_rate && <DataRow label="Sample Rate" value={`${stream.sample_rate} Hz`} />}
-          {stream.channels != null && <DataRow label="Channels" value={String(stream.channels)} />}
-          {stream.channel_layout && <DataRow label="Layout" value={stream.channel_layout} />}
-          {stream.bit_rate && <DataRow label="Bit Rate" value={stream.bit_rate} />}
-          {stream.duration && <DataRow label="Duration" value={`${parseFloat(stream.duration).toFixed(2)}s`} />}
+          {stream.pix_fmt && <DataRow label={t("probe.pixFmt")} value={stream.pix_fmt} />}
+          {stream.sample_rate && <DataRow label={t("probe.sampleRate")} value={`${stream.sample_rate} Hz`} />}
+          {stream.channels != null && <DataRow label={t("probe.channels")} value={String(stream.channels)} />}
+          {stream.channel_layout && <DataRow label={t("probe.layout")} value={stream.channel_layout} />}
+          {stream.bit_rate && <DataRow label={t("probe.bitRate")} value={stream.bit_rate} />}
+          {stream.language && <DataRow label={t("probe.language")} value={stream.language} />}
+          {stream.title && <DataRow label={t("probe.streamTitle")} value={stream.title} />}
+          {stream.duration && <DataRow label={t("probe.duration")} value={`${parseFloat(stream.duration).toFixed(2)}s`} />}
         </dl>
       </CardContent>
     </Card>

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { LocaleProvider } from "@/lib/i18n";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,13 +28,18 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="ko"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
-        <Toaster richColors position="bottom-right" />
+        <ThemeProvider>
+          <LocaleProvider>
+            <Sidebar />
+            <main className="flex-1 overflow-y-auto p-6">{children}</main>
+            <Toaster richColors position="bottom-right" />
+          </LocaleProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
