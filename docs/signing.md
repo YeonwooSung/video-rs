@@ -21,7 +21,14 @@ Verified on this Mac:
 
 `setup:sidecars` currently **symlinks** Homebrew binaries. The bundle copies those binaries, but they still load dylibs from `/opt/homebrew/Cellar/ffmpeg/…`. That works here and fails on a Mac without the same Homebrew install. Notarization will also struggle with unsigned Homebrew libraries.
 
-For a shippable installer, replace the sidecars with **statically linked** FFmpeg/FFprobe (or a self-contained relocatable build) before signing.
+For a shippable installer, replace the sidecars with **statically linked** FFmpeg/FFprobe before signing:
+
+```bash
+npm run setup:sidecars -- --release   # or: npm run setup:sidecars:release
+npm run tauri:build
+```
+
+`--release` downloads the pinned GPL static builds in `scripts/sidecar-lock.json` and writes regular files (not Homebrew symlinks). Default `npm run setup:sidecars` stays on PATH/Homebrew for daily `tauri:dev`. The bundle will be **tens–200+ MB** (static ffmpeg+ffprobe), not the ~15 MB Homebrew-linked app. See [plan-static-ffmpeg.md](./plan-static-ffmpeg.md).
 
 ## macOS (Developer ID + notarization)
 

@@ -163,7 +163,7 @@ BtbN은 macOS를 만들지 않는다. 후보는 evermeet.cx / osxexperts / Marti
 |------|------|---------------------|------|
 | [evermeet.cx](https://evermeet.cx/ffmpeg/) | **x86_64만** | configure에 `--enable-gpl --enable-version3`, **`--enable-nonfree` 없음**. fdk-aac/openssl 없음. ARM 제공 안 함 (명시) | x86_64는 **조건부 승인**: 받은 바이너리의 `-version`이 페이지와 같은지 재확인한 뒤에만 lock에 넣는다. ARM 불가 |
 | [osxexperts.net](https://osxexperts.net/) | arm64 9.0 / Intel 8.0 | configure 미공개. “educational purposes only”. 소스 링크가 FFmpeg 6.1인데 파일명은 9.0 | **기본 거절**. 오너가 직접 받아 `-version`에 nonfree가 없음을 증명하기 전에는 lock에 넣지 않음 |
-| [Martin Riedl](https://ffmpeg.martin-riedl.de/) | arm64 + x86_64 | 기본 스크립트 `SKIP_DECKLINK=YES`. DeckLink를 켤 때만 `--enable-nonfree`. OpenSSL은 `--enable-version3`(OpenSSL 3 / Apache 2 + GPLv3)이지 nonfree가 아님. fdk-aac 없음. 배포 URL은 `redirect/latest/...`로 **떠다님** | arm64 **1순위 후보**. 구현 전 `ffmpeg -version`에 `--enable-nonfree`가 없는지 **반드시** 확인. 있으면 거절. 핀은 redirect가 아니라 버전·날짜가 있는 URL + sha256 |
+| [Martin Riedl](https://ffmpeg.martin-riedl.de/) | arm64 + x86_64 | **검증 (2026-09-02, arm64 9.0.1 `1787073674_9.0.1`):** `ffmpeg version 9.0.1` configuration에 `--enable-gpl --enable-version3 --enable-openssl`, **`--enable-nonfree` / `libfdk` 없음**. 필수 인코더·필터·concat 있음. `otool -L`은 `/System`·`/usr/lib`만. 핀은 dated `/download/macos/{arm64,amd64}/…_9.0.1/*.zip` + sha256 (redirect/latest 아님). | arm64 + x86_64 **핀함**. osxexperts 미사용. evermeet은 같은 Intel 슬롯을 쓰지 않음 |
 
 거절 시 폴백 (순서 고정):
 
@@ -430,47 +430,47 @@ macOS lock 항목이 `unavailable`이면 이 잡은 **실패하는 것이 맞다
 
 ## 10. 작업 순서
 
-- [ ] **Task 0 — 오너 게이트 (코드 없음)**
+- [x] **Task 0 — 오너 게이트 (코드 없음)**
   - 정적 GPL ffmpeg를 **배포 아티팩트에 넣는 것**을 수락하는가?
   - macOS ARM 출처: Riedl 검증 / 직접 빌드(후속) / 당분간 macOS `--release` 실패 허용?
   - 아니오라면 스크립트/lock만 준비하거나 작업을 멈춘다. `release.yml`은 바꾸지 않는다.
 
-- [ ] **Task 1 — macOS 후보 검증 (다운로드만, 앱 코드 없음)**
+- [x] **Task 1 — macOS 후보 검증 (다운로드만, 앱 코드 없음)**
   - Martin Riedl arm64 **release** zip을 받아 `ffmpeg -version` / `ffprobe -version`을 저장.
   - `--enable-nonfree` 또는 `libfdk`가 있으면 **거절**하고 폴백을 문서화.
   - evermeet x86_64 release zip도 같은 검사. ARM이 아님을 확인.
   - osxexperts는 오너가 요청하지 않으면 받지 않음.
   - 결과를 PR 본문 또는 이 문서 §4.3에 한 표로 남김.
 
-- [ ] **Task 2 — `scripts/sidecar-lock.json`**
+- [x] **Task 2 — `scripts/sidecar-lock.json`**
   - §4.4 스키마. BtbN 9.0 dated 에셋 + sha256 (win64, winarm64, linux64, linuxarm64).
   - macOS는 Task 1 결과에 따라 `pinned` 또는 `unavailable`.
   - floating `latest` URL을 `url`에 넣지 않음.
 
-- [ ] **Task 3 — `setup-sidecars.js --release`**
+- [x] **Task 3 — `setup-sidecars.js --release`**
   - 인자 파싱: `--release`, 선택 `--triple`, `VIDEO_RS_SIDECAR_CACHE`.
   - 기본 경로(플래그 없음)는 현재 `findBinary` + `linkOrCopy` **그대로**.
   - `--release`: lock 읽기 → 캐시 → sha256 → 압축 해제 → regular file 복사 → §5·§6 검증.
   - `unavailable` / 해시 불일치 / nonfree / Homebrew otool 흔적 → exit 1.
   - Windows는 `https` + unzip (Node 내장 또는 `powershell Expand-Archive`). Linux는 `tar`. zip을 우선해 7z 의존을 피함.
 
-- [ ] **Task 4 — 로컬 검증 (구현 머신)**
+- [x] **Task 4 — 로컬 검증 (구현 머신)**
   - 플래그 없이: 지금처럼 Homebrew 심링크, `tauri:dev` PATH fallback.
   - `--release` 후: `test ! -L`, `otool -L` (macOS) 또는 `ldd` (Linux).
   - `ffmpeg -version` / `ffprobe -version`.
   - 가능하면 `tauri:build` 후 번들 바이너리에도 같은 검사. 크기 기록.
 
-- [ ] **Task 5 — `release.yml`**
+- [x] **Task 5 — `release.yml`**
   - Task 0이 yes일 때만.
   - `setup-ffmpeg@v3` 제거. cache + `setup:sidecars -- --release`.
   - macOS job에 Homebrew 심링크가 아님을 단언.
   - Windows job도 같은 `--release`.
 
-- [ ] **Task 6 — `ci.yml` (최소)**
+- [x] **Task 6 — `ci.yml` (최소)**
   - 기존 `sidecars` 존재 확인은 유지.
   - 선택: `ubuntu-latest` 한 잡에서 `--release` + `-version`.
 
-- [ ] **Task 7 — 문서**
+- [x] **Task 7 — 문서**
   - `docs/signing.md` / `signing.kr.md`에 `--release` 한 단락.
   - spec §5에 프로덕션=정적 핀 한 줄.
   - README는 부모가 링크. 여기서 수정하지 않음.

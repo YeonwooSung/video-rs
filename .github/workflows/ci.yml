@@ -60,3 +60,27 @@ jobs:
           ffprobe=(src-tauri/binaries/ffprobe-*)
           test "${#ffmpeg[@]}" -ge 1
           test "${#ffprobe[@]}" -ge 1
+
+  sidecars-release:
+    name: sidecars-release (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/video-rs-sidecars
+          key: sidecars-${{ hashFiles('scripts/sidecar-lock.json') }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Portable static sidecars
+        env:
+          VIDEO_RS_SIDECAR_CACHE: ${{ runner.temp }}/video-rs-sidecars
+        run: npm run setup:sidecars -- --release
+      - name: Static ffmpeg responds
+        run: |
+          bin=(src-tauri/binaries/ffmpeg-*)
+          probe=(src-tauri/binaries/ffprobe-*)
+          test -f "${bin[0]}" && test ! -L "${bin[0]}"
+          "${bin[0]}" -hide_banner -version
+          "${probe[0]}" -hide_banner -version

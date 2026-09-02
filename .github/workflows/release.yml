@@ -22,9 +22,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - uses: FedericoCarboni/setup-ffmpeg@v3
       - run: npm ci
-      - run: npm run setup:sidecars
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/video-rs-sidecars
+          key: sidecars-${{ hashFiles('scripts/sidecar-lock.json') }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Portable static sidecars
+        env:
+          VIDEO_RS_SIDECAR_CACHE: ${{ runner.temp }}/video-rs-sidecars
+        run: npm run setup:sidecars -- --release
+      - name: Assert not a Homebrew symlink
+        run: |
+          bin=(src-tauri/binaries/ffmpeg-*)
+          test -f "${bin[0]}" && test ! -L "${bin[0]}"
+          otool -L "${bin[0]}" | tee /tmp/otool.txt
+          ! grep -E '/opt/homebrew|/usr/local/Cellar' /tmp/otool.txt
       - name: Build (sign + notarize when secrets exist)
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -54,9 +66,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - uses: FedericoCarboni/setup-ffmpeg@v3
       - run: npm ci
-      - run: npm run setup:sidecars
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/video-rs-sidecars
+          key: sidecars-${{ hashFiles('scripts/sidecar-lock.json') }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Portable static sidecars
+        env:
+          VIDEO_RS_SIDECAR_CACHE: ${{ runner.temp }}/video-rs-sidecars
+        run: npm run setup:sidecars -- --release
       - run: npm run tauri:build
       - uses: actions/upload-artifact@v4
         with:

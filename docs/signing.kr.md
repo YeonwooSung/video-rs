@@ -21,7 +21,14 @@
 
 `setup:sidecars`는 Homebrew 바이너리를 **심볼릭 링크**합니다. 번들에 그 바이너리가 복사되지만, dylib은 여전히 `/opt/homebrew/Cellar/ffmpeg/…`를 찾습니다. 같은 Homebrew가 있는 Mac에서만 동작하고, 공증도 서명되지 않은 Homebrew 라이브러리 때문에 어려울 수 있습니다.
 
-배포용 설치 파일을 만들려면 서명 전에 **정적 링크** FFmpeg/FFprobe(또는 재배치 가능한 빌드)로 사이드카를 바꾸세요.
+배포용 설치 파일을 만들려면 서명 전에 **정적 링크** FFmpeg/FFprobe로 사이드카를 바꾸세요:
+
+```bash
+npm run setup:sidecars -- --release   # 또는: npm run setup:sidecars:release
+npm run tauri:build
+```
+
+`--release`는 `scripts/sidecar-lock.json`에 핀된 GPL 정적 빌드를 받아 심링크가 아닌 일반 파일로 씁니다. 기본 `npm run setup:sidecars`는 일상 `tauri:dev`용 PATH/Homebrew 그대로입니다. 번들은 Homebrew 링크 앱(~15MB)이 아니라 **수십–200MB+** 가 됩니다. [plan-static-ffmpeg.md](./plan-static-ffmpeg.md)를 보세요.
 
 ## macOS (Developer ID + 공증)
 

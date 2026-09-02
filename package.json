@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "setup:sidecars": "node scripts/setup-sidecars.js"
+    "setup:sidecars": "node scripts/setup-sidecars.js",
+    "setup:sidecars:release": "node scripts/setup-sidecars.js --release"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

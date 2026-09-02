@@ -211,7 +211,7 @@ Expected filenames:
 
 At runtime the backend tries the bundled sidecar first, then a system `ffmpeg`/`ffprobe` on `PATH`. `check_environment` reports which source was used. Local file playback uses `convertFileSrc()`, which emits `asset://localhost/…` on macOS/Linux and `http://asset.localhost/…` on Windows.
 
-For production builds, replace the setup-script outputs with statically linked binaries for each target platform.
+For production builds, pin statically linked GPL binaries with `npm run setup:sidecars -- --release` (`scripts/sidecar-lock.json`). Default `setup:sidecars` remains PATH/Homebrew for development.
 
 ---
 
