@@ -20,6 +20,7 @@ Every encode/extract job shows progress, can be cancelled, and records an entry 
 | Convert | Extract | Pull an audio track (MP3, AAC, FLAC, WAV, Opus) or a subtitle track (SRT, ASS, VTT) |
 | Convert | GIF | Palette-based animated GIF from a time range (default 10 fps, 480 px wide) |
 | Edit | Trim | Cut `[start, end)` with fast stream copy or frame-accurate re-encode |
+| Edit | Clips | Mark in/out while playing; export one or more ranges as separate files |
 | Edit | Concat | Join clips in list order (stream copy if codecs match, otherwise re-encode) |
 | Edit | Crop | Drag a rectangle on the first frame (8 handles to resize) or type `W×H` at `X,Y`. Audio is copied |
 | Edit | Resize | Scale to a preset or custom size. Height `-2` keeps aspect ratio |
@@ -125,7 +126,7 @@ For a production installer, replace those links with statically linked FFmpeg/FF
 video-rs/
 ├── src/                          # Next.js App Router (static export)
 │   ├── app/                      # Pages: home, probe, extract, transcode,
-│   │                             # viewer, trim, concat, crop, resize,
+│   │                             # viewer, trim, clips, concat, crop, resize,
 │   │                             # transform, speed, gif, fade, volume,
 │   │                             # watermark, jobs
 │   ├── components/
@@ -173,12 +174,14 @@ There is no GUI / real-file E2E suite yet. `npm run dev` in a browser cannot cal
 - Text watermarks use a discovered system font; missing fonts fail the FFmpeg job.
 - Job rerun stores absolute paths.
 - Speed UI is 0.25×–4×; the Rust command accepts 0.125×–8× if invoked directly.
-- Desktop signing / notarization is not set up in this repo.
+- Desktop signing / notarization needs an Apple Developer ID (see [docs/signing.md](docs/signing.md)). Local builds are ad-hoc signed.
+- Homebrew-linked FFmpeg sidecars work on the build Mac only. Ship static FFmpeg for a portable installer.
 
 ## Docs
 
 - [Specification](docs/spec_v0.1.0.md) — architecture, IPC, FFmpeg flags
 - [TODO](docs/TODO.md) — implemented checklist
+- [Signing and notarization](docs/signing.md) — Developer ID, notarize, CI secrets
 - [한국어 README](README.kr.md)
 
 ## License
