@@ -182,6 +182,8 @@ GUI나 실제 파일 E2E는 아직 없습니다. 브라우저의 `npm run dev`�
 - [명세](docs/spec_v0.1.0.md) — 구조, IPC, FFmpeg 플래그
 - [TODO](docs/TODO.md) — 구현된 항목 목록
 - [서명과 공증](docs/signing.kr.md) — Developer ID, 공증, CI 시크릿
+- [E2E / 실제 파일 스모크 계획](docs/plan-e2e.md) — `VIDEO_RS_SMOKE=1` (아직 미구현)
+- [이식 가능한 정적 FFmpeg 계획](docs/plan-static-ffmpeg.md) — 릴리스 사이드카 (아직 미구현)
 - [English README](README.md)
 
 ## 라이선스
