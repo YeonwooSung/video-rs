@@ -66,3 +66,7 @@ export function readTextFile(path: string): Promise<string> {
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke<void>("write_text_file", { path, contents });
 }
+
+export function removeFile(path: string): Promise<void> {
+  return invoke<void>("remove_file", { path });
+}

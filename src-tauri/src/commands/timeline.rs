@@ -59,6 +59,15 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
     Ok(())
 }
 
+#[tauri::command(rename_all = "snake_case")]
+pub fn remove_file(path: String) -> Result<(), AppError> {
+    if path.is_empty() {
+        return Err(AppError::InvalidArgument("path must not be empty".into()));
+    }
+    std::fs::remove_file(path)?;
+    Ok(())
+}
+
 /// Validate options, probe unique sources for audio, and build ffmpeg args (no spawn).
 async fn prepare_export(
     app: &AppHandle,

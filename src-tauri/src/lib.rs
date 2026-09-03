@@ -49,6 +49,7 @@ pub fn run() {
             commands::timeline::render_timeline_proxy,
             commands::timeline::read_text_file,
             commands::timeline::write_text_file,
+            commands::timeline::remove_file,
             commands::download::probe_download,
             commands::download::download_video,
         ])
