@@ -8,10 +8,22 @@ use crate::services::timeline::model::{
 use crate::services::timeline::validate;
 
 /// Compile a validated timeline project into an ffmpeg argv (no process spawn).
+/// Missing `has_audio` entries are treated as `true` (unit tests / assume-audio).
 pub fn build_timeline_args(
     project: &TimelineProject,
     output: &str,
     profile: &RenderProfile,
+) -> Result<Vec<String>, AppError> {
+    build_timeline_args_with_audio(project, output, profile, &HashMap::new())
+}
+
+/// Same as [`build_timeline_args`], but silent sources (`has_audio[path] == false`)
+/// emit `anullsrc` instead of `[{ii}:a]atrim=...`.
+pub fn build_timeline_args_with_audio(
+    project: &TimelineProject,
+    output: &str,
+    profile: &RenderProfile,
+    has_audio: &HashMap<String, bool>,
 ) -> Result<Vec<String>, AppError> {
     validate(project)?;
 
@@ -123,9 +135,7 @@ pub fn build_timeline_args(
             if clip.timeline_start > cursor {
                 let gap = clip.timeline_start - cursor;
                 let label = next_label("ag");
-                parts.push(format!(
-                    "anullsrc=r={sr}:cl=stereo,atrim=end={gap},asetpts=PTS-STARTPTS[{label}]"
-                ));
+                parts.push(anullsrc_branch(sr, gap, &label));
                 a_labels.push(label);
             }
 
@@ -133,9 +143,14 @@ pub fn build_timeline_args(
             let si = clip.source_in;
             let so = clip.source_out;
             let label = next_label("ac");
-            parts.push(format!(
-                "[{ii}:a]atrim=start={si}:end={so},asetpts=PTS-STARTPTS,aresample={sr},aformat=sample_fmts=fltp:channel_layouts=stereo[{label}]"
-            ));
+            if source_has_audio(has_audio, &clip.source_path) {
+                parts.push(format!(
+                    "[{ii}:a]atrim=start={si}:end={so},asetpts=PTS-STARTPTS,{}[{label}]",
+                    audio_fmt(sr)
+                ));
+            } else {
+                parts.push(anullsrc_branch(sr, clip.source_duration(), &label));
+            }
             a_labels.push(label);
             cursor = clip.timeline_end();
         }
@@ -169,9 +184,18 @@ pub fn build_timeline_args(
             } else {
                 next_label("aa")
             };
-            parts.push(format!(
-                "[{ii}:a]atrim=start={si}:end={so},asetpts=PTS-STARTPTS,aresample={sr},aformat=sample_fmts=fltp:channel_layouts=stereo,adelay={delay_ms}|{delay_ms},apad,atrim=end={duration},asetpts=PTS-STARTPTS[{label}]"
-            ));
+            if source_has_audio(has_audio, &clip.source_path) {
+                parts.push(format!(
+                    "[{ii}:a]atrim=start={si}:end={so},asetpts=PTS-STARTPTS,adelay={delay_ms}|{delay_ms},apad,atrim=end={duration},asetpts=PTS-STARTPTS,{}[{label}]",
+                    audio_fmt(sr)
+                ));
+            } else {
+                let clip_dur = clip.source_duration();
+                parts.push(format!(
+                    "anullsrc=r={sr}:cl=stereo,atrim=end={clip_dur},asetpts=PTS-STARTPTS,adelay={delay_ms}|{delay_ms},apad,atrim=end={duration},asetpts=PTS-STARTPTS,{}[{label}]",
+                    audio_fmt(sr)
+                ));
+            }
             a1_labels.push(label);
         }
 
@@ -187,15 +211,12 @@ pub fn build_timeline_args(
         }
 
         if has_v1_audio {
-            parts.push(
-                "[a_v1][a_a1]amix=inputs=2:duration=first:dropout_transition=0[aout]".into(),
-            );
+            parts
+                .push("[a_v1][a_a1]amix=inputs=2:duration=first:dropout_transition=0[aout]".into());
         }
     } else if !has_v1_audio {
         // Video-only black / muted with no A1: still need an audio stream.
-        parts.push(format!(
-            "anullsrc=r={sr}:cl=stereo,atrim=end={duration},asetpts=PTS-STARTPTS[aout]"
-        ));
+        parts.push(anullsrc_branch(sr, duration, "aout"));
     }
 
     let graph = parts.join(";");
@@ -250,10 +271,29 @@ fn collect_inputs(
     (inputs, index)
 }
 
+fn audio_fmt(sr: u32) -> String {
+    format!("aresample={sr},aformat=sample_fmts=fltp:channel_layouts=stereo")
+}
+
+fn source_has_audio(has_audio: &HashMap<String, bool>, path: &str) -> bool {
+    has_audio.get(path).copied().unwrap_or(true)
+}
+
+fn anullsrc_branch(sr: u32, duration: f64, label: &str) -> String {
+    format!(
+        "anullsrc=r={sr}:cl=stereo,atrim=end={duration},asetpts=PTS-STARTPTS,{}[{label}]",
+        audio_fmt(sr)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::timeline::model::{ClipEffect, TimelineClip, TimelineTrack, TIMELINE_VERSION};
+    use std::collections::HashMap;
+
+    use crate::services::timeline::model::{
+        ClipEffect, TimelineClip, TimelineTrack, TIMELINE_VERSION,
+    };
 
     fn base_project(tracks: Vec<TimelineTrack>) -> TimelineProject {
         TimelineProject {
@@ -299,7 +339,10 @@ mod tests {
     }
 
     fn filter_complex_of(args: &[String]) -> &str {
-        let pos = args.iter().position(|a| a == "-filter_complex").expect("-filter_complex");
+        let pos = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .expect("-filter_complex");
         &args[pos + 1]
     }
 
@@ -319,8 +362,12 @@ mod tests {
         let fc = filter_complex_of(&args);
         assert_eq!(fc.matches("color=").count(), 1);
         assert!(fc.contains("concat=n=3:v=1:a=0"));
-        assert!(args.windows(2).any(|w| w[0] == "-i" && w[1] == "/tmp/a.mp4"));
-        assert!(args.windows(2).any(|w| w[0] == "-i" && w[1] == "/tmp/b.mp4"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "-i" && w[1] == "/tmp/a.mp4"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "-i" && w[1] == "/tmp/b.mp4"));
         assert!(args.contains(&"-y".to_string()));
         assert!(args.contains(&"-hide_banner".to_string()));
         assert!(args.windows(2).any(|w| w == ["-map", "[vout]"]));
@@ -413,10 +460,9 @@ mod tests {
         let project = base_project(vec![video_track("v1", false, vec![c])]);
         let profile = RenderProfile::export(&project);
         let err = build_timeline_args(&project, "/tmp/out.mp4", &profile).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("clip effects are not supported yet")
-        );
+        assert!(err
+            .to_string()
+            .contains("clip effects are not supported yet"));
     }
 
     #[test]
@@ -431,18 +477,46 @@ mod tests {
         let fc = filter_complex_of(&args);
         assert!(fc.contains("color=c=black"));
         assert!(fc.contains("concat=n=2:v=1:a=0"));
-        assert!(fc.contains("anullsrc=r=48000:cl=stereo,atrim=end=1"));
+        assert!(fc.contains(
+            "anullsrc=r=48000:cl=stereo,atrim=end=1,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
+        ));
+    }
+
+    #[test]
+    fn silent_clip_uses_anullsrc_not_input_audio() {
+        let project = base_project(vec![video_track(
+            "v1",
+            false,
+            vec![clip("a", "/tmp/silent.mp4", 0.0, 0.0, 1.5)],
+        )]);
+        let profile = RenderProfile::export(&project);
+        let mut has_audio = HashMap::new();
+        has_audio.insert("/tmp/silent.mp4".into(), false);
+        let args =
+            build_timeline_args_with_audio(&project, "/tmp/out.mp4", &profile, &has_audio).unwrap();
+        let fc = filter_complex_of(&args);
+        assert!(fc.contains("anullsrc"));
+        assert!(!fc.contains("[0:a]atrim"));
+        assert!(fc.contains("aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"));
+    }
+
+    #[test]
+    fn v1_and_a1_emits_amix_first() {
+        let project = base_project(vec![
+            video_track("v1", false, vec![clip("v", "/tmp/v.mp4", 0.0, 0.0, 2.0)]),
+            audio_track("a1", false, vec![clip("a", "/tmp/a.wav", 0.0, 0.0, 1.0)]),
+        ]);
+        let profile = RenderProfile::export(&project);
+        let args = build_timeline_args(&project, "/tmp/out.mp4", &profile).unwrap();
+        let fc = filter_complex_of(&args);
+        assert!(fc.contains("amix=inputs=2:duration=first"));
     }
 
     #[test]
     fn muted_v1_with_a1_uses_black_and_a1_aout() {
         let project = base_project(vec![
             video_track("v1", true, vec![clip("v", "/tmp/v.mp4", 0.0, 0.0, 2.0)]),
-            audio_track(
-                "a1",
-                false,
-                vec![clip("a", "/tmp/a.wav", 0.5, 0.0, 1.0)],
-            ),
+            audio_track("a1", false, vec![clip("a", "/tmp/a.wav", 0.5, 0.0, 1.0)]),
         ]);
         let profile = RenderProfile::export(&project);
         let args = build_timeline_args(&project, "/tmp/out.mp4", &profile).unwrap();

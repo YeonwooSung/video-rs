@@ -13,12 +13,16 @@ export interface VideoPlayerInnerProps {
   src: string;
   fps?: number;
   onTimeChange?: (seconds: number) => void;
+  startTime?: number;
+  enableSpace?: boolean;
 }
 
 export default function VideoPlayerInner({
   src,
   fps = 30,
   onTimeChange,
+  startTime,
+  enableSpace = true,
 }: VideoPlayerInnerProps) {
   const { t } = useI18n();
   const videoRef = useRef<HTMLDivElement>(null);
@@ -60,6 +64,25 @@ export default function VideoPlayerInner({
       playerRef.current.src([{ src, type: guessType(src) }]);
     }
   }, [src]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || startTime == null) return;
+    const apply = () => {
+      const max = player.duration() ?? Number.POSITIVE_INFINITY;
+      const next = Math.min(Math.max(0, startTime), Number.isFinite(max) ? max : startTime);
+      player.currentTime(next);
+      setTime(next);
+    };
+    if (player.readyState() >= 1) {
+      apply();
+    } else {
+      player.one("loadedmetadata", apply);
+    }
+    return () => {
+      player.off("loadedmetadata", apply);
+    };
+  }, [src, startTime]);
 
   useEffect(() => {
     return () => {
@@ -112,6 +135,7 @@ export default function VideoPlayerInner({
         player.currentTime(next);
       };
       if (e.key === " " || e.code === "Space") {
+        if (!enableSpace) return;
         e.preventDefault();
         if (player.paused()) player.play();
         else player.pause();
@@ -133,7 +157,7 @@ export default function VideoPlayerInner({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [enableSpace]);
 
   const applyPreciseSeek = () => {
     const t = parseFloat(seekTo);

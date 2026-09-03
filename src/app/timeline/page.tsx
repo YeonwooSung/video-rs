@@ -431,8 +431,12 @@ export default function TimelinePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {sourceSrc ? (
-              <VideoPlayer src={sourceSrc} fps={project.fps} />
+            {sourceSrc && selected ? (
+              <VideoPlayer
+                src={sourceSrc}
+                fps={project.fps}
+                startTime={selected.source_in}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
                 {t("timeline.selectClip")}
@@ -487,7 +491,7 @@ export default function TimelinePage() {
           </CardHeader>
           <CardContent>
             {programSrc ? (
-              <VideoPlayer src={programSrc} fps={project.fps} />
+              <VideoPlayer src={programSrc} fps={project.fps} enableSpace={false} />
             ) : (
               <p className="text-sm text-muted-foreground">
                 {t("timeline.programEmpty")}

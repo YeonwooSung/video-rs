@@ -16,8 +16,26 @@ export interface VideoPlayerProps {
   src: string;
   fps?: number;
   onTimeChange?: (seconds: number) => void;
+  /** Seek the existing player here when `src` or this value changes. */
+  startTime?: number;
+  /** Bind Space to play/pause. Default true (Viewer / Clips). */
+  enableSpace?: boolean;
 }
 
-export function VideoPlayer({ src, fps, onTimeChange }: VideoPlayerProps) {
-  return <VideoPlayerInner src={src} fps={fps} onTimeChange={onTimeChange} />;
+export function VideoPlayer({
+  src,
+  fps,
+  onTimeChange,
+  startTime,
+  enableSpace,
+}: VideoPlayerProps) {
+  return (
+    <VideoPlayerInner
+      src={src}
+      fps={fps}
+      onTimeChange={onTimeChange}
+      startTime={startTime}
+      enableSpace={enableSpace}
+    />
+  );
 }

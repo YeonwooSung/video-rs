@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use tauri::AppHandle;
 
 use crate::models::error::AppError;
 use crate::services::ffmpeg::FFmpegService;
+use crate::services::ffprobe::FFprobeService;
 use crate::services::timeline::{
-    build_timeline_args, validate, RenderProfile, TimelineProject, TimelineValidation,
+    build_timeline_args, build_timeline_args_with_audio, validate, RenderProfile, TimelineProject,
+    TimelineValidation,
 };
 
 #[derive(Debug, Deserialize)]
@@ -25,7 +29,7 @@ pub async fn export_timeline(
     app: AppHandle,
     options: ExportTimelineOptions,
 ) -> Result<(), AppError> {
-    let (args, duration) = prepare_export(&options)?;
+    let (args, duration) = prepare_export(&app, &options).await?;
     FFmpegService::run(&app, args, Some(duration), options.job_id.as_deref()).await
 }
 
@@ -46,8 +50,26 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Validate options and build ffmpeg args (no spawn). Unit-tested for empty output_path.
-fn prepare_export(options: &ExportTimelineOptions) -> Result<(Vec<String>, f64), AppError> {
+/// Validate options, probe unique sources for audio, and build ffmpeg args (no spawn).
+async fn prepare_export(
+    app: &AppHandle,
+    options: &ExportTimelineOptions,
+) -> Result<(Vec<String>, f64), AppError> {
+    if options.output_path.is_empty() {
+        return Err(AppError::InvalidArgument(
+            "output_path must not be empty".into(),
+        ));
+    }
+    validate(&options.project)?;
+    let has_audio = probe_source_audio(app, &options.project).await?;
+    prepare_export_with_audio(options, &has_audio)
+}
+
+/// Sync compile path used by unit tests (no AppHandle / no probe).
+fn prepare_export_with_audio(
+    options: &ExportTimelineOptions,
+    has_audio: &HashMap<String, bool>,
+) -> Result<(Vec<String>, f64), AppError> {
     if options.output_path.is_empty() {
         return Err(AppError::InvalidArgument(
             "output_path must not be empty".into(),
@@ -58,14 +80,42 @@ fn prepare_export(options: &ExportTimelineOptions) -> Result<(Vec<String>, f64),
         .profile
         .clone()
         .unwrap_or_else(|| RenderProfile::export(&options.project));
-    let args = build_timeline_args(&options.project, &options.output_path, &profile)?;
+    let args = if has_audio.is_empty() {
+        build_timeline_args(&options.project, &options.output_path, &profile)?
+    } else {
+        build_timeline_args_with_audio(&options.project, &options.output_path, &profile, has_audio)?
+    };
     let duration = options.project.duration_secs();
     Ok((args, duration))
+}
+
+/// Probe each unique source path once. Missing files surface as FFprobe errors.
+async fn probe_source_audio(
+    app: &AppHandle,
+    project: &TimelineProject,
+) -> Result<HashMap<String, bool>, AppError> {
+    let mut map = HashMap::new();
+    for track in &project.tracks {
+        if track.muted {
+            continue;
+        }
+        for clip in &track.clips {
+            if map.contains_key(&clip.source_path) {
+                continue;
+            }
+            let info = FFprobeService::probe(app, &clip.source_path).await?;
+            let has = info.streams.iter().any(|s| s.codec_type == "audio");
+            map.insert(clip.source_path.clone(), has);
+        }
+    }
+    Ok(map)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
     use crate::services::timeline::{TimelineClip, TimelineTrack, TrackKind, TIMELINE_VERSION};
 
     fn sample_project() -> TimelineProject {
@@ -101,7 +151,7 @@ mod tests {
             profile: None,
             job_id: None,
         };
-        let err = prepare_export(&options).unwrap_err();
+        let err = prepare_export_with_audio(&options, &HashMap::new()).unwrap_err();
         match err {
             AppError::InvalidArgument(msg) => {
                 assert_eq!(msg, "output_path must not be empty");
@@ -119,7 +169,7 @@ mod tests {
             profile: None,
             job_id: None,
         };
-        let (args, duration) = prepare_export(&options).unwrap();
+        let (args, duration) = prepare_export_with_audio(&options, &HashMap::new()).unwrap();
         assert_eq!(duration, 2.0);
         assert!(args.iter().any(|a| a == "/tmp/out.mp4"));
         assert!(args.iter().any(|a| a == "-filter_complex"));
