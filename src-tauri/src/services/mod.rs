@@ -8,5 +8,6 @@ pub mod gif;
 pub mod job;
 pub mod sidecar;
 pub mod speed;
+pub mod timeline;
 pub mod volume;
 pub mod watermark;
