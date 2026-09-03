@@ -28,24 +28,43 @@ import { useI18n } from "@/lib/i18n";
 import { toastJobDone } from "@/lib/jobToast";
 import { checkEnvironment } from "@/lib/tauri/commands";
 import {
+  classifyDownloadUrl,
   downloadVideo,
   openDirectory,
+  parseDownloadLines,
   probeDownload,
+  probeDownloadList,
   type DownloadInfo,
 } from "@/lib/tauri/download";
-import { formatDuration } from "@/lib/types/video";
+import { formatDuration, isCancelledError } from "@/lib/types/video";
 
 const DIR_KEY = "video-rs:download-dir";
+
+type QueueItem = {
+  key: string;
+  id: string;
+  url: string;
+  title: string;
+  duration_secs: number | null;
+  uploader: string | null;
+  thumbnail: string | null;
+  selected: boolean;
+  lineError?: string;
+  resultError?: string;
+};
 
 export default function DownloadPage() {
   const { t } = useI18n();
   const [url, setUrl] = useState("");
-  const [info, setInfo] = useState<DownloadInfo | null>(null);
+  const [items, setItems] = useState<QueueItem[]>([]);
+  const [listTitle, setListTitle] = useState<string | null>(null);
+  const [asPlaylist, setAsPlaylist] = useState(false);
   const [probing, setProbing] = useState(false);
   const [outputDir, setOutputDir] = useState("");
   const [quality, setQuality] = useState("1080");
   const [ytdlpOk, setYtdlpOk] = useState<boolean | null>(null);
   const [lastPath, setLastPath] = useState("");
+  const [batchLabel, setBatchLabel] = useState("");
   const job = useFfmpegJob("Download");
 
   useEffect(() => {
@@ -69,16 +88,63 @@ export default function DownloadPage() {
     }
   };
 
+  const fromInfo = (
+    info: DownloadInfo,
+    opts?: { url?: string; key?: string },
+  ): QueueItem => ({
+    key: opts?.key ?? info.id,
+    id: info.id,
+    url: opts?.url ?? info.url,
+    title: info.title,
+    duration_secs: info.duration_secs,
+    uploader: info.uploader,
+    thumbnail: info.thumbnail,
+    selected: true,
+  });
+
   const handleProbe = async () => {
-    if (!url.trim()) {
+    const text = url.trim();
+    if (!text) {
       toast.error(t("download.needUrl"));
       return;
     }
     setProbing(true);
-    setInfo(null);
+    setItems([]);
+    setListTitle(null);
     try {
-      const next = await probeDownload(url.trim());
-      setInfo(next);
+      const lineCount = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).length;
+      if (lineCount > 1) {
+        const parsed = await parseDownloadLines(text);
+        setItems(
+          parsed.map((line, i) => ({
+            key: `line-${i}-${line.video_id ?? "err"}`,
+            id: line.video_id ?? `line-${i}`,
+            url: line.video_id
+              ? `https://www.youtube.com/watch?v=${line.video_id}`
+              : line.raw,
+            title: line.raw,
+            duration_secs: null,
+            uploader: null,
+            thumbnail: null,
+            selected: !line.error,
+            lineError: line.error ?? undefined,
+          })),
+        );
+        return;
+      }
+      const first = text.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? text;
+      const kind = await classifyDownloadUrl(first);
+      const listParam = playlistIdFromUrl(first);
+      if (kind === "playlist" || (asPlaylist && listParam)) {
+        const listUrl =
+          kind === "playlist" ? first : `https://www.youtube.com/playlist?list=${listParam}`;
+        const list = await probeDownloadList(listUrl);
+        setListTitle(list.title);
+        setItems(list.entries.map((e, i) => fromInfo(e, { key: `pl-${i}-${e.id}` })));
+        return;
+      }
+      const next = await probeDownload(first);
+      setItems([fromInfo(next, { url: first })]);
     } catch (err) {
       toast.error(t("download.probeFailed"), { description: String(err) });
     } finally {
@@ -91,40 +157,80 @@ export default function DownloadPage() {
     if (dir) persistDir(dir);
   };
 
+  const selectedItems = items.filter((i) => i.selected && !i.lineError);
+
   const handleDownload = async () => {
-    if (!url.trim() || !outputDir.trim()) {
+    if (!outputDir.trim()) {
       toast.error(t("download.needUrlAndDir"));
       return;
     }
+    if (selectedItems.length === 0) {
+      toast.error(t("download.needSelection"));
+      return;
+    }
+    const queue = selectedItems;
     let saved = "";
+    let failed = 0;
     const result = await job.runJob(
       async (jobId) => {
-        saved = await downloadVideo({
-          url: url.trim(),
-          outputDir: outputDir.trim(),
-          quality,
-          jobId,
-        });
-        setLastPath(saved);
-        rememberFile(saved);
+        for (let i = 0; i < queue.length; i++) {
+          const item = queue[i];
+          setBatchLabel(`${i + 1} / ${queue.length}`);
+          try {
+            saved = await downloadVideo({
+              url: item.url,
+              outputDir: outputDir.trim(),
+              quality,
+              jobId,
+            });
+            setLastPath(saved);
+            rememberFile(saved);
+            setItems((prev) =>
+              prev.map((p) =>
+                p.key === item.key ? { ...p, resultError: undefined } : p,
+              ),
+            );
+          } catch (err) {
+            if (isCancelledError(err)) {
+              throw err;
+            }
+            failed += 1;
+            const message = String(err);
+            setItems((prev) =>
+              prev.map((p) =>
+                p.key === item.key ? { ...p, resultError: message } : p,
+              ),
+            );
+          }
+        }
       },
       {
-        outputPath: outputDir.trim(),
-        replay: {
-          command: "download_video",
-          args: {
-            options: {
-              url: url.trim(),
-              output_dir: outputDir.trim(),
-              quality,
-              job_id: null,
-            },
-          },
-        },
+        outputPath: saved || outputDir.trim(),
+        replay:
+          queue.length === 1
+            ? {
+                command: "download_video",
+                args: {
+                  options: {
+                    url: queue[0].url,
+                    output_dir: outputDir.trim(),
+                    quality,
+                    job_id: null,
+                  },
+                },
+              }
+            : undefined,
       },
     );
-    if (result.ok && saved) {
+    setBatchLabel("");
+    if (result.ok && failed === 0 && saved) {
       toastJobDone(t("download.done"), saved);
+    } else if (result.ok && failed > 0) {
+      toast.message(t("download.batchPartial"), {
+        description: t("download.batchSummary")
+          .replace("{ok}", String(queue.length - failed))
+          .replace("{fail}", String(failed)),
+      });
     } else if (result.ok) {
       toast.success(t("download.done"));
     } else if (result.cancelled) {
@@ -132,6 +238,11 @@ export default function DownloadPage() {
     } else {
       toast.error(t("download.failed"), { description: result.error });
     }
+  };
+
+  const allSelected = items.length > 0 && items.every((i) => i.lineError || i.selected);
+  const toggleAll = (on: boolean) => {
+    setItems((prev) => prev.map((i) => (i.lineError ? i : { ...i, selected: on })));
   };
 
   return (
@@ -151,44 +262,91 @@ export default function DownloadPage() {
           <CardDescription>{t("download.urlDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Input
+          <textarea
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=…"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void handleProbe();
-              }
-            }}
+            placeholder={"https://www.youtube.com/watch?v=…"}
+            rows={4}
+            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
           />
+          {playlistIdFromUrl(url.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "") &&
+            url.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).length === 1 && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={asPlaylist}
+                onChange={(e) => setAsPlaylist(e.target.checked)}
+              />
+              {t("download.asPlaylist")}
+            </label>
+          )}
           <Button variant="outline" onClick={handleProbe} disabled={probing || job.isRunning}>
             {probing ? t("download.probing") : t("download.probe")}
           </Button>
         </CardContent>
       </Card>
 
-      {info && (
+      {items.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>{info.title}</CardTitle>
+            <CardTitle>{listTitle ?? t("download.queue")}</CardTitle>
             <CardDescription>
-              {info.uploader ?? t("download.unknownUploader")}
-              {info.duration_secs != null
-                ? ` · ${formatDuration(info.duration_secs)}`
-                : ""}
+              {t("download.queueCount").replace("{n}", String(items.length))}
             </CardDescription>
           </CardHeader>
-          {info.thumbnail && (
-            <CardContent>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={info.thumbnail}
-                alt=""
-                className="max-h-48 rounded-md object-cover"
+          <CardContent className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => toggleAll(e.target.checked)}
               />
-            </CardContent>
-          )}
+              {t("download.selectAll")}
+            </label>
+            <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+              {items.map((item) => (
+                <li key={item.key} className="rounded-md border px-3 py-2">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      disabled={!!item.lineError}
+                      checked={item.selected}
+                      onChange={(e) =>
+                        setItems((prev) =>
+                          prev.map((p) =>
+                            p.key === item.key ? { ...p, selected: e.target.checked } : p,
+                          ),
+                        )
+                      }
+                    />
+                    {item.thumbnail && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.thumbnail}
+                        alt=""
+                        className="mt-0.5 h-12 w-20 shrink-0 rounded object-cover"
+                      />
+                    )}
+                    <span>
+                      <span className="font-medium">{item.title}</span>
+                      <span className="block text-muted-foreground">
+                        {item.id}
+                        {item.duration_secs != null && ` · ${formatDuration(item.duration_secs)}`}
+                        {item.uploader && ` · ${item.uploader}`}
+                      </span>
+                      {item.lineError && (
+                        <span className="block text-destructive">{item.lineError}</span>
+                      )}
+                      {item.resultError && (
+                        <span className="block text-destructive">{item.resultError}</span>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
         </Card>
       )}
 
@@ -221,7 +379,11 @@ export default function DownloadPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button className="gap-2" onClick={handleDownload} disabled={job.isRunning}>
+            <Button
+              className="gap-2"
+              onClick={handleDownload}
+              disabled={job.isRunning || selectedItems.length === 0}
+            >
               <Download className="h-4 w-4" />
               {t("download.start")}
             </Button>
@@ -235,7 +397,7 @@ export default function DownloadPage() {
             <JobProgress
               percent={job.percent}
               message={job.message}
-              label={t("download.running")}
+              label={batchLabel || t("download.running")}
               onCancel={job.cancel}
             />
           )}
@@ -255,4 +417,14 @@ export default function DownloadPage() {
       </Card>
     </div>
   );
+}
+
+function playlistIdFromUrl(raw: string): string | null {
+  try {
+    const parsed = new URL(raw.trim());
+    const list = parsed.searchParams.get("list");
+    return list && list.length > 0 ? list : null;
+  } catch {
+    return null;
+  }
 }

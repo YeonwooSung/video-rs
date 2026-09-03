@@ -24,7 +24,7 @@ Video RS is a desktop video utility application built on **Tauri v2** (Rust nati
 | Watermark | Image overlay or drawtext at a corner/center |
 | Jobs | In-app history of recent FFmpeg runs |
 | Viewer | Play local files with rate control, frame step, precise seek, and snapshot |
-| YouTube download | Save one public YouTube video via yt-dlp (no sign-in, no playlists in Phase 1) |
+| YouTube download | Save public YouTube videos or playlists via yt-dlp (no sign-in) |
 
 ---
 
@@ -583,16 +583,16 @@ Optional real-file checks: `VIDEO_RS_SMOKE=1 cargo test --manifest-path src-taur
 
 ---
 
-## 11. YouTube download (Phase 1)
+## 11. YouTube download
 
-`/download` saves **one public YouTube video** to a folder on this machine using **yt-dlp** (sidecar, then PATH). FFmpeg merges separate video/audio streams (`--ffmpeg-location`).
+`/download` saves public YouTube videos to a folder using **yt-dlp** (optional on-disk file, then PATH). FFmpeg merges separate video/audio streams (`--ffmpeg-location`).
 
 | Phase | Status |
 |-------|--------|
 | 1 | Implemented: single watch/shorts/youtu.be URL, quality best/1080/720, progress + cancel |
-| 2 | Planned: playlists and multiple URLs, sequential |
+| 2 | Implemented: playlists and multiple URLs, sequential, checkbox selection |
 
-IPC: `probe_download` (metadata JSON, no file), `download_video` (returns the written path). YouTube hosts only. Playlist-only URLs are rejected. No cookies, no login. Live streams are rejected.
+IPC: `probe_download`, `probe_download_list`, `classify_download_url`, `parse_download_lines`, `download_video`. YouTube hosts only. No cookies, no login. Live streams are rejected. One failed item does not stop the rest of a batch; cancel stops the queue.
 
 yt-dlp is optional and is **not** in `externalBin` (release builds only require ffmpeg/ffprobe). `setup:sidecars` links a real yt-dlp when found; otherwise it warns and the app uses PATH. The environment card and download page say when it is missing.
 

@@ -67,6 +67,162 @@ pub fn validate_youtube_video_url(raw: &str) -> Result<String, AppError> {
     ))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YoutubeUrlKind {
+    Video,
+    Playlist,
+}
+
+pub fn classify_youtube_url(raw: &str) -> Result<YoutubeUrlKind, AppError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::InvalidArgument("url must not be empty".into()));
+    }
+    let (host, path, query) = split_url(trimmed)?;
+    let host = normalize_host(&host);
+    if !ALLOWED_HOSTS.contains(&host.as_str()) {
+        return Err(AppError::InvalidArgument(
+            "only YouTube URLs are supported".into(),
+        ));
+    }
+    if path.to_ascii_lowercase().starts_with("/playlist") {
+        return Ok(YoutubeUrlKind::Playlist);
+    }
+    if extract_video_id(&host, &path, &query).is_some() {
+        return Ok(YoutubeUrlKind::Video);
+    }
+    if query_param(&query, "list").is_some() {
+        return Ok(YoutubeUrlKind::Playlist);
+    }
+    Err(AppError::InvalidArgument(
+        "URL must point to a single YouTube video".into(),
+    ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedUrlLine {
+    pub raw: String,
+    pub kind: Option<YoutubeUrlKind>,
+    pub video_id: Option<String>,
+    pub error: Option<String>,
+}
+
+pub fn parse_url_lines(text: &str) -> Vec<ParsedUrlLine> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(|raw| match classify_youtube_url(raw) {
+            Ok(YoutubeUrlKind::Video) => {
+                let video_id = split_url(raw).ok().and_then(|(host, path, query)| {
+                    extract_video_id(&normalize_host(&host), &path, &query)
+                });
+                ParsedUrlLine {
+                    raw: raw.to_string(),
+                    kind: Some(YoutubeUrlKind::Video),
+                    video_id,
+                    error: None,
+                }
+            }
+            Ok(YoutubeUrlKind::Playlist) => ParsedUrlLine {
+                raw: raw.to_string(),
+                kind: Some(YoutubeUrlKind::Playlist),
+                video_id: None,
+                error: Some("playlists cannot be mixed into a URL list".into()),
+            },
+            Err(e) => ParsedUrlLine {
+                raw: raw.to_string(),
+                kind: None,
+                video_id: None,
+                error: Some(e.to_string()),
+            },
+        })
+        .collect()
+}
+
+pub fn watch_url_for_id(id: &str) -> String {
+    format!("https://www.youtube.com/watch?v={id}")
+}
+
+pub fn build_flat_playlist_args(url: &str) -> Vec<String> {
+    vec![
+        "--flat-playlist".into(),
+        "-J".into(),
+        "--no-download".into(),
+        "--no-warnings".into(),
+        url.into(),
+    ]
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlaylistEntry {
+    pub id: String,
+    pub title: String,
+    pub duration_secs: Option<f64>,
+    pub uploader: Option<String>,
+}
+
+pub fn parse_flat_playlist(json: &str) -> Result<(Option<String>, Vec<PlaylistEntry>), AppError> {
+    let blob = extract_json_object(json)
+        .ok_or_else(|| AppError::Ytdlp("yt-dlp playlist metadata is not JSON".into()))?;
+    let value: serde_json::Value = serde_json::from_str(blob)?;
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let mut entries = Vec::new();
+    if let Some(arr) = value.get("entries").and_then(|v| v.as_array()) {
+        for item in arr {
+            if item.is_null() {
+                continue;
+            }
+            let id = item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .filter(|s| is_video_id(s))
+                .map(str::to_string);
+            let Some(id) = id else {
+                continue;
+            };
+            let entry_title = item
+                .get("title")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("YouTube video")
+                .to_string();
+            let duration_secs = item
+                .get("duration")
+                .and_then(|v| v.as_f64())
+                .filter(|d| *d > 0.0);
+            let uploader = item
+                .get("uploader")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            entries.push(PlaylistEntry {
+                id,
+                title: entry_title,
+                duration_secs,
+                uploader,
+            });
+        }
+    }
+    if entries.is_empty() {
+        return Err(AppError::Ytdlp("playlist has no video entries".into()));
+    }
+    Ok((title, entries))
+}
+
+fn extract_json_object(s: &str) -> Option<&str> {
+    let start = s.find('{')?;
+    let end = s.rfind('}')?;
+    if end < start {
+        None
+    } else {
+        Some(&s[start..=end])
+    }
+}
+
 pub fn build_probe_args(url: &str) -> Vec<String> {
     vec![
         "-J".into(),
@@ -164,11 +320,7 @@ fn split_url(raw: &str) -> Result<(String, String, String), AppError> {
     if host.is_empty() {
         return Err(AppError::InvalidArgument("url host is empty".into()));
     }
-    Ok((
-        host.to_string(),
-        format!("/{path}"),
-        query.to_string(),
-    ))
+    Ok((host.to_string(), format!("/{path}"), query.to_string()))
 }
 
 fn normalize_host(host: &str) -> String {
@@ -257,14 +409,77 @@ mod tests {
     fn rejects_non_youtube_and_playlist_only() {
         let err = validate_youtube_video_url("https://vimeo.com/123").unwrap_err();
         assert!(err.to_string().contains("only YouTube URLs are supported"));
-        let err = validate_youtube_video_url("https://www.youtube.com/playlist?list=PLtest")
-            .unwrap_err();
+        let err =
+            validate_youtube_video_url("https://www.youtube.com/playlist?list=PLtest").unwrap_err();
         assert!(err.to_string().contains("playlists are not supported yet"));
-        let err = validate_youtube_video_url("https://www.youtube.com/watch?list=PLtest")
-            .unwrap_err();
+        let err =
+            validate_youtube_video_url("https://www.youtube.com/watch?list=PLtest").unwrap_err();
         assert!(err.to_string().contains("playlists are not supported yet"));
         assert!(validate_youtube_video_url("file:///tmp/x").is_err());
         assert!(validate_youtube_video_url("").is_err());
+    }
+
+    #[test]
+    fn classify_playlist_and_batch_lines() {
+        assert_eq!(
+            classify_youtube_url("https://www.youtube.com/playlist?list=PLtest").unwrap(),
+            YoutubeUrlKind::Playlist
+        );
+        assert_eq!(
+            classify_youtube_url("https://music.youtube.com/playlist?list=PLtest").unwrap(),
+            YoutubeUrlKind::Playlist
+        );
+        assert_eq!(
+            classify_youtube_url("https://www.youtube.com/watch?list=PLtest").unwrap(),
+            YoutubeUrlKind::Playlist
+        );
+        assert_eq!(
+            classify_youtube_url("https://youtu.be/dQw4w9wgBcQ?list=PLtest").unwrap(),
+            YoutubeUrlKind::Video
+        );
+        assert_eq!(
+            watch_url_for_id("dQw4w9wgBcQ"),
+            "https://www.youtube.com/watch?v=dQw4w9wgBcQ"
+        );
+        let lines = parse_url_lines(
+            "https://youtu.be/dQw4w9wgBcQ\n\nhttps://vimeo.com/1\nhttps://www.youtube.com/playlist?list=PLtest\n",
+        );
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].error.is_none());
+        assert_eq!(lines[0].video_id.as_deref(), Some("dQw4w9wgBcQ"));
+        assert!(lines[1].error.is_some());
+        assert!(lines[2].error.as_deref().unwrap().contains("mixed"));
+    }
+
+    #[test]
+    fn parse_flat_playlist_skips_nulls() {
+        let json = r#"{
+          "title": "Mix",
+          "entries": [
+            null,
+            {"id": "dQw4w9wgBcQ", "title": "A", "duration": 10.0},
+            {"id": "bad", "title": "skip"},
+            {"id": "abcdefghijk", "title": "B"}
+          ]
+        }"#;
+        let (title, entries) = parse_flat_playlist(json).unwrap();
+        assert_eq!(title.as_deref(), Some("Mix"));
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id, "dQw4w9wgBcQ");
+        assert_eq!(entries[1].title, "B");
+        let err =
+            parse_flat_playlist(r#"{"title":"Empty","entries":[null,{"id":"bad"}]}"#).unwrap_err();
+        assert!(err.to_string().contains("no video entries"));
+    }
+
+    #[test]
+    fn flat_playlist_args_keep_playlist_mode() {
+        let args = build_flat_playlist_args("https://www.youtube.com/playlist?list=PLtest");
+        let joined = args.join(" ");
+        assert!(args.contains(&"--flat-playlist".into()));
+        assert!(args.contains(&"-J".into()));
+        assert!(!joined.contains("--no-playlist"));
+        assert!(!joined.contains("cookies"));
     }
 
     #[test]
@@ -311,7 +526,10 @@ mod tests {
 
     #[test]
     fn quality_parse() {
-        assert!(matches!(DownloadQuality::parse("best"), Ok(DownloadQuality::Best)));
+        assert!(matches!(
+            DownloadQuality::parse("best"),
+            Ok(DownloadQuality::Best)
+        ));
         assert!(matches!(
             DownloadQuality::parse("1080"),
             Ok(DownloadQuality::Height(1080))

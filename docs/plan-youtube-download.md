@@ -441,16 +441,16 @@ VIDEO_RS_YT=1 cargo test --manifest-path src-tauri/Cargo.toml ytdlp::live -- --t
 
 ### Phase 2 — 재생목록 / 여러 URL (Phase 1 후)
 
-- [ ] **Task 6 — 목록 probe + URL 여러 줄 validate**
+- [x] **Task 6 — 목록 probe + URL 여러 줄 validate**
   - `yt-dlp --flat-playlist -J`. 항목 배열.
   - 커밋: `feat: probe YouTube playlist entries`
 
-- [ ] **Task 7 — 순차 받기 UI**
+- [x] **Task 7 — 순차 받기 UI**
   - 체크박스, `i / n`, 항목 실패 후에도 계속, 폴더 하나.
   - 각 항목은 Phase 1 `download_video`와 **같은 argv 빌더**.
   - 커밋: `feat: download playlists sequentially`
 
-- [ ] **Task 8 — 문서**
+- [x] **Task 8 — 문서**
   - 재생목록 한계 (비공개 목록, 로그인 없음).
   - 커밋: `docs: document playlist downloads`
 
