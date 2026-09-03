@@ -29,6 +29,23 @@ pub async fn export_timeline(
     FFmpegService::run(&app, args, Some(duration), options.job_id.as_deref()).await
 }
 
+#[tauri::command(rename_all = "snake_case")]
+pub fn read_text_file(path: String) -> Result<String, AppError> {
+    if path.is_empty() {
+        return Err(AppError::InvalidArgument("path must not be empty".into()));
+    }
+    Ok(std::fs::read_to_string(path)?)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
+    if path.is_empty() {
+        return Err(AppError::InvalidArgument("path must not be empty".into()));
+    }
+    std::fs::write(path, contents)?;
+    Ok(())
+}
+
 /// Validate options and build ffmpeg args (no spawn). Unit-tested for empty output_path.
 fn prepare_export(options: &ExportTimelineOptions) -> Result<(Vec<String>, f64), AppError> {
     if options.output_path.is_empty() {

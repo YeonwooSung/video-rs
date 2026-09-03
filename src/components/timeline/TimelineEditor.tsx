@@ -17,6 +17,7 @@ import {
   trimClip,
 } from "@/lib/timeline/project";
 import type { TimelineProject } from "@/lib/timeline/types";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { ClipGestureResult } from "./ClipBlock";
 import { TrackLane } from "./TrackLane";
@@ -59,6 +60,7 @@ export function TimelineEditor({
   onImportAudio,
   onOverlap,
 }: TimelineEditorProps) {
+  const { t } = useI18n();
   const [pxPerSecond, setPxPerSecond] = useState(DEFAULT_PX_PER_SEC);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -175,7 +177,7 @@ export function TimelineEditor({
           onClick={() => onImportVideo?.()}
         >
           <Film />
-          Import video
+          {t("timeline.importVideo")}
         </Button>
         <Button
           type="button"
@@ -185,7 +187,7 @@ export function TimelineEditor({
           onClick={() => onImportAudio?.()}
         >
           <Music />
-          Import audio
+          {t("timeline.importAudio")}
         </Button>
         <Button
           type="button"
@@ -196,7 +198,7 @@ export function TimelineEditor({
           onClick={handleRazor}
         >
           <Scissors />
-          Razor
+          {t("timeline.razor")}
         </Button>
         <Button
           type="button"
@@ -207,7 +209,7 @@ export function TimelineEditor({
           onClick={handleDelete}
         >
           <Trash2 />
-          Delete
+          {t("timeline.delete")}
         </Button>
         <div className="ml-auto flex items-center gap-1">
           <span className="mr-2 font-mono text-xs tabular-nums text-muted-foreground">
@@ -217,7 +219,7 @@ export function TimelineEditor({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Zoom out"
+            aria-label={t("timeline.zoomOut")}
             disabled={pxPerSecond <= MIN_PX_PER_SEC}
             onClick={() => zoomTo(pxPerSecond / 1.25)}
           >
@@ -227,7 +229,7 @@ export function TimelineEditor({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Zoom in"
+            aria-label={t("timeline.zoomIn")}
             disabled={pxPerSecond >= MAX_PX_PER_SEC}
             onClick={() => zoomTo(pxPerSecond * 1.25)}
           >

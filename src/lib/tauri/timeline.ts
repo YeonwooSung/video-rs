@@ -33,3 +33,20 @@ export function exportTimeline(opts: {
     },
   });
 }
+
+export async function openJsonFile(): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const result = await open({
+    multiple: false,
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  return typeof result === "string" ? result : null;
+}
+
+export function readTextFile(path: string): Promise<string> {
+  return invoke<string>("read_text_file", { path });
+}
+
+export function writeTextFile(path: string, contents: string): Promise<void> {
+  return invoke<void>("write_text_file", { path, contents });
+}

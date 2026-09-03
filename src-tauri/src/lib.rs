@@ -46,6 +46,8 @@ pub fn run() {
             commands::job::cancel_job,
             commands::timeline::validate_timeline,
             commands::timeline::export_timeline,
+            commands::timeline::read_text_file,
+            commands::timeline::write_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

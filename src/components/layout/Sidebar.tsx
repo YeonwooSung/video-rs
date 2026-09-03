@@ -22,6 +22,7 @@ import {
   Stamp,
   History,
   Sunset,
+  GanttChart,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { LocaleToggle } from "@/components/i18n/LocaleToggle";
@@ -36,6 +37,7 @@ const groups: { titleKey: string | null; items: NavItem[] }[] = [
       { href: "/", labelKey: "nav.home", icon: LayoutDashboard },
       { href: "/jobs", labelKey: "nav.jobs", icon: History },
       { href: "/viewer", labelKey: "nav.viewer", icon: Play },
+      { href: "/timeline", labelKey: "nav.timeline", icon: GanttChart },
     ],
   },
   {

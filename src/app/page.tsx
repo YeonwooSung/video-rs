@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FolderOpen, Film, Music, Repeat2, Play, Maximize2, Scissors, Clapperboard, Layers, RotateCw, Crop, Image, Gauge, Volume2, Stamp, History, Sunset } from "lucide-react";
+import { FolderOpen, Film, Music, Repeat2, Play, Maximize2, Scissors, Clapperboard, Layers, RotateCw, Crop, Image, Gauge, Volume2, Stamp, History, Sunset, GanttChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,6 +19,7 @@ import { useI18n } from "@/lib/i18n";
 import Link from "next/link";
 
 const features = [
+  { href: "/timeline", icon: GanttChart, titleKey: "home.feat.timeline", descKey: "home.feat.timelineDesc", passFile: false },
   { href: "/probe", icon: Film, titleKey: "home.feat.analyze", descKey: "home.feat.analyzeDesc" },
   { href: "/extract", icon: Music, titleKey: "home.feat.extract", descKey: "home.feat.extractDesc" },
   { href: "/transcode", icon: Repeat2, titleKey: "home.feat.transcode", descKey: "home.feat.transcodeDesc" },
@@ -148,8 +149,8 @@ export default function HomePage() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map(({ href, icon: Icon, titleKey, descKey }) => (
-          <Link key={href} href={hrefWithFile(href, selectedFile)}>
+        {features.map(({ href, icon: Icon, titleKey, descKey, passFile }) => (
+          <Link key={href} href={passFile === false ? href : hrefWithFile(href, selectedFile)}>
             <Card className="h-full cursor-pointer transition-colors hover:bg-accent/50">
               <CardHeader>
                 <div className="flex items-center gap-2">
