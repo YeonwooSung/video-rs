@@ -44,6 +44,8 @@ pub fn run() {
             commands::watermark::apply_watermark,
             commands::fade::fade_video,
             commands::job::cancel_job,
+            commands::timeline::validate_timeline,
+            commands::timeline::export_timeline,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

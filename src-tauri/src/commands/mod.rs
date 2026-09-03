@@ -9,6 +9,7 @@ pub mod probe;
 pub mod resize;
 pub mod reveal;
 pub mod speed;
+pub mod timeline;
 pub mod transcode;
 pub mod transform;
 pub mod trim;
