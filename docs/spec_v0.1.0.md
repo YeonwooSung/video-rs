@@ -557,12 +557,14 @@ npm run setup:sidecars
 
 `/timeline` is a first-class multi-track NLE page. Existing tool pages (trim, concat, clips, …) stay as they are and do not call the timeline compiler.
 
+Phase 2: Program plays a session proxy from `render_timeline_proxy`. Playhead seek uses proxy time. Final export is still `export_timeline` + `RenderProfile::export`.
+
 ### Preview phases
 
 | Phase | Status | Preview |
 |-------|--------|---------|
 | 1 | Implemented | Source clip or last export only. No proxy generation, no realtime scrub. |
-| 2 | Planned | Proxy media for lighter preview |
+| 2 | Implemented | Session proxy in Program; playhead seeks the proxy. Source stays on the selected clip original. |
 | 3 | Planned | Realtime scrub / frame-accurate preview |
 
 ### IPC
@@ -570,12 +572,13 @@ npm run setup:sidecars
 | Command | Role |
 |---------|------|
 | `validate_timeline` | Validate a `TimelineProject` (no FFmpeg spawn; does not require paths to exist on disk) |
-| `export_timeline` | Validate → compile → run FFmpeg via the shared job/progress path |
+| `export_timeline` | Validate → compile → run FFmpeg via the shared job/progress path (`RenderProfile::export`) |
+| `render_timeline_proxy` | Same prepare path as export; default `RenderProfile::proxy` for the Program preview |
 | `read_text_file` / `write_text_file` | Load and save timeline project JSON on disk |
 
 ### Compiler
 
-`build_timeline_args(project, output, &RenderProfile)` turns the project into an FFmpeg argument list (`filter_complex` graph). Phase 1 export uses `RenderProfile::export`. A proxy profile may exist for later phases; the Phase 1 UI does not generate or play proxies.
+`build_timeline_args(project, output, &RenderProfile)` turns the project into an FFmpeg argument list (`filter_complex` graph). Export uses `RenderProfile::export`. Program preview uses `RenderProfile::proxy` via `render_timeline_proxy` (session temp file; not stored on the project).
 
 ### Smoke
 

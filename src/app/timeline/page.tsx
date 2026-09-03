@@ -30,6 +30,7 @@ import {
   exportTimeline,
   openJsonFile,
   readTextFile,
+  renderTimelineProxy,
   validateTimeline,
   writeTextFile,
 } from "@/lib/tauri/timeline";
@@ -41,6 +42,10 @@ import {
   removeClip,
   trimClip,
 } from "@/lib/timeline/project";
+import {
+  useTimelineProxy,
+  type ProxyRenderArgs,
+} from "@/lib/timeline/proxy";
 import type { TimelineClip, TimelineProject } from "@/lib/timeline/types";
 import { displaySize } from "@/lib/types/video";
 
@@ -67,6 +72,42 @@ export default function TimelinePage() {
   const [outDraft, setOutDraft] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const job = useFfmpegJob("Timeline");
+  const proxyJob = useFfmpegJob("Timeline proxy");
+
+  const renderProxy = useCallback(async ({ project: snap, outputPath }: ProxyRenderArgs) => {
+    const result = await proxyJob.runJob(
+      (jobId) =>
+        renderTimelineProxy({
+          project: snap,
+          outputPath,
+          profile: null,
+          jobId,
+        }),
+      {
+        outputPath,
+        replay: {
+          command: "render_timeline_proxy",
+          args: {
+            options: {
+              project: snap,
+              output_path: outputPath,
+              profile: null,
+              job_id: null,
+            },
+          },
+        },
+      },
+    );
+    if (!result.ok) {
+      throw new Error(result.error || (result.cancelled ? "cancelled" : "proxy render failed"));
+    }
+  }, [proxyJob]);
+
+  const proxy = useTimelineProxy(project, renderProxy, {
+    onError: (message) => {
+      toast.error(message);
+    },
+  });
 
   const selected = useMemo(
     () => findClip(project, selectedClipId),
@@ -77,14 +118,27 @@ export default function TimelinePage() {
     return stem ? `${stem}_timeline.mp4` : "";
   }, [project]);
   const resolvedOutput = outputPath || suggestedOutput;
+  const showingProxy = proxy.path != null;
+  const programPath = proxy.path ?? lastExportPath;
+  const programBust = showingProxy
+    ? cacheBustToken(`${proxy.hash ?? ""}:${proxy.path ?? ""}`)
+    : String(programRev);
+  const programPlayerKey = showingProxy
+    ? `proxy:${programBust}`
+    : `export:${programRev}`;
   const programStale =
-    lastExportPath != null && exportedHash !== projectHash(project);
+    !showingProxy &&
+    lastExportPath != null &&
+    exportedHash !== projectHash(project);
+  const proxyUpdating = proxy.dirty || proxy.rendering;
   const sourceSrc =
     selected?.source_path && sourceAsset?.path === selected.source_path
       ? sourceAsset.url
       : "";
   const programSrc =
-    lastExportPath && programAsset?.path === lastExportPath
+    programPath &&
+    programAsset?.path === programPath &&
+    programAsset.url.includes(`v=${programBust}`)
       ? programAsset.url
       : "";
   const inStr = inDraft ?? (selected ? selected.source_in.toFixed(3) : "");
@@ -136,15 +190,19 @@ export default function TimelinePage() {
   }, [selected?.source_path, t]);
 
   useEffect(() => {
-    if (!lastExportPath || programRev < 1) return;
-    const path = lastExportPath;
-    const rev = programRev;
+    if (!programPath) {
+      setProgramAsset(null);
+      return;
+    }
+    if (!showingProxy && programRev < 1) return;
+    const path = programPath;
+    const bust = programBust;
     let cancelled = false;
     toAssetUrl(path)
       .then((url) => {
         if (cancelled) return;
         const sep = url.includes("?") ? "&" : "?";
-        setProgramAsset({ path, url: `${url}${sep}v=${rev}` });
+        setProgramAsset({ path, url: `${url}${sep}v=${bust}` });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -154,7 +212,7 @@ export default function TimelinePage() {
     return () => {
       cancelled = true;
     };
-  }, [lastExportPath, programRev, t]);
+  }, [programPath, programBust, showingProxy, programRev, t]);
 
   const applyProject = useCallback((next: TimelineProject) => {
     setProject(next);
@@ -337,7 +395,8 @@ export default function TimelinePage() {
     const snapshot = project;
     const dest = resolvedOutput;
     const heldProgram = programAsset;
-    setProgramAsset(null);
+    const keepProgram = showingProxy;
+    if (!keepProgram) setProgramAsset(null);
     const result = await job.runJob(
       (jobId) =>
         exportTimeline({
@@ -367,7 +426,7 @@ export default function TimelinePage() {
       setProgramRev((n) => n + 1);
       toastJobDone(t("timeline.done"), dest);
     } else {
-      if (heldProgram) setProgramAsset(heldProgram);
+      if (!keepProgram && heldProgram) setProgramAsset(heldProgram);
       if (result.cancelled) {
         toast.message(t("common.cancelled"));
       } else {
@@ -492,20 +551,24 @@ export default function TimelinePage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <CardTitle>{t("timeline.program")}</CardTitle>
-              {programStale && (
+              {proxyUpdating && (
+                <Badge variant="secondary">{t("timeline.proxyUpdating")}</Badge>
+              )}
+              {programStale && !proxyUpdating && (
                 <Badge variant="secondary">{t("timeline.programStale")}</Badge>
               )}
             </div>
             <CardDescription>
-              {lastExportPath ?? t("timeline.programEmpty")}
+              {programPath ?? t("timeline.programEmpty")}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {programSrc ? (
               <VideoPlayer
-                key={programRev}
+                key={programPlayerKey}
                 src={programSrc}
                 fps={project.fps}
+                startTime={showingProxy ? playhead : undefined}
                 enableSpace={false}
               />
             ) : (
@@ -538,6 +601,16 @@ export default function TimelinePage() {
 
 function evenSnap(n: number): number {
   return Math.max(2, n & ~1);
+}
+
+/** Short cache-bust token so a rewritten same-name proxy reloads. */
+function cacheBustToken(parts: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < parts.length; i++) {
+    h ^= parts.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
 }
 
 function trackEnd(project: TimelineProject, trackId: string): number {

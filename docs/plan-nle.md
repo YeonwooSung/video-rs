@@ -633,19 +633,19 @@ Rust에도 같은 편집이 필요하지는 않다. 서버 상태는 없다. 검
 
 ### Phase 2 — 프록시 미리보기 (Phase 1 머지 후)
 
-- [ ] **Task 9 — `render_timeline_proxy`**
+- [x] **Task 9 — `render_timeline_proxy`**
   - `export_timeline`과 동일, 기본 프로파일만 `RenderProfile::proxy`.
   - 스모크: 출력 width == 640, duration은 export와 동일 허용오차.
   - 커밋: `feat: render low-res timeline proxy`
 
-- [ ] **Task 10 — 세션 프록시 캐시**
+- [x] **Task 10 — 세션 프록시 캐시**
   - 생성: `src/lib/timeline/proxy.ts`.
   - 키 = `projectHash(project)`. 값이 바뀌면 dirty.
   - 디바운스 800ms 후 `render_timeline_proxy` → 임시 경로 (`{temp}/video-rs-proxy-{hash}.mp4`). 이전 프록시 파일 삭제.
   - 빈 타임라인은 호출하지 않음.
   - 커밋: `feat: debounce and cache timeline proxy renders`
 
-- [ ] **Task 11 — Program 모니터가 프록시를 재생**
+- [x] **Task 11 — Program 모니터가 프록시를 재생**
   - 프록시가 있으면 Program = 프록시. 플레이헤드 seek = 프록시 시각.
   - dirty이거나 렌더 중이면 배지 `timeline.proxyUpdating`. 직전 프록시가 있으면 그걸 유지.
   - 선택 클립 Source 모니터는 **원본 유지** (in/out 맞출 때).

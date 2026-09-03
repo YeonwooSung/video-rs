@@ -31,7 +31,7 @@ Every encode/extract job shows progress, can be cancelled, and records an entry 
 | Edit | Volume | Gain in dB (−48 to +48) or EBU R128 loudnorm. Video is stream-copied |
 | Edit | Watermark | Burn a PNG/JPEG logo or text at a corner or the center |
 | App | Viewer | Play locally with rate, ±5s / ±1 frame, typed seek, keyboard shortcuts, snapshot |
-| App | Timeline | Multi-track NLE on `/timeline`; Phase 1 preview is source clip or last export (no proxy / realtime scrub) |
+| App | Timeline | Multi-track NLE on `/timeline`; Phase 2 Program plays a session proxy (playhead seeks the proxy); export is still full resolution |
 | App | Jobs | Last 50 runs on this device (status, output path, Show, Rerun) |
 
 ## Typical workflow
