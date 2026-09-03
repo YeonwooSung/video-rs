@@ -49,17 +49,22 @@ pub fn validate_youtube_video_url(raw: &str) -> Result<String, AppError> {
             "only YouTube URLs are supported".into(),
         ));
     }
-    if is_playlist_only(&path, &query) {
+    if path.to_ascii_lowercase().starts_with("/playlist") {
         return Err(AppError::InvalidArgument(
             "playlists are not supported yet".into(),
         ));
     }
-    if extract_video_id(&host, &path, &query).is_none() {
+    if extract_video_id(&host, &path, &query).is_some() {
+        return Ok(trimmed.to_string());
+    }
+    if query_param(&query, "list").is_some() {
         return Err(AppError::InvalidArgument(
-            "URL must point to a single YouTube video".into(),
+            "playlists are not supported yet".into(),
         ));
     }
-    Ok(trimmed.to_string())
+    Err(AppError::InvalidArgument(
+        "URL must point to a single YouTube video".into(),
+    ))
 }
 
 pub fn build_probe_args(url: &str) -> Vec<String> {
@@ -181,14 +186,6 @@ fn query_param(query: &str, key: &str) -> Option<String> {
     None
 }
 
-fn is_playlist_only(path: &str, query: &str) -> bool {
-    let p = path.to_ascii_lowercase();
-    if p.starts_with("/playlist") {
-        return true;
-    }
-    query_param(query, "v").is_none() && query_param(query, "list").is_some()
-}
-
 fn extract_video_id(host: &str, path: &str, query: &str) -> Option<String> {
     if host == "youtu.be" {
         return first_segment(path).filter(|id| is_video_id(id));
@@ -247,6 +244,10 @@ mod tests {
             "https://m.youtube.com/watch?v=dQw4w9wgBcQ",
             "https://music.youtube.com/watch?v=dQw4w9wgBcQ",
             "https://www.youtube.com/watch?v=dQw4w9wgBcQ&list=PLtest",
+            "https://youtu.be/dQw4w9wgBcQ?list=PLtest",
+            "https://youtube.com/shorts/dQw4w9wgBcQ?list=PLtest",
+            "https://www.youtube.com/embed/dQw4w9wgBcQ?list=PLtest",
+            "https://www.youtube.com/live/dQw4w9wgBcQ?list=PLtest",
         ] {
             validate_youtube_video_url(url).unwrap_or_else(|e| panic!("{url}: {e}"));
         }

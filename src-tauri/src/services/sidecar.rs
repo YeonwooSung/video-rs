@@ -83,6 +83,20 @@ pub async fn output_ffprobe(
 }
 
 pub fn spawn_ytdlp(app: &AppHandle, args: &[String]) -> Result<SpawnedSidecar, AppError> {
+    if let Some(path) = resolve_optional_tool_path(app, "yt-dlp") {
+        match app.shell().command(&path).args(args).spawn() {
+            Ok((rx, child)) => {
+                return Ok(SpawnedSidecar {
+                    rx,
+                    child,
+                    source: format!("file:{path}"),
+                });
+            }
+            Err(e) => {
+                log::warn!("yt-dlp at {path} failed ({e}); trying system PATH");
+            }
+        }
+    }
     spawn_tool(
         app,
         YTDLP_SIDECAR,
@@ -96,7 +110,60 @@ pub async fn output_ytdlp(
     app: &AppHandle,
     args: &[&str],
 ) -> Result<(bool, String, String), AppError> {
+    if let Some(path) = resolve_optional_tool_path(app, "yt-dlp") {
+        match app.shell().command(&path).args(args).output().await {
+            Ok(out) => {
+                return Ok((
+                    out.status.success(),
+                    merge_output(&out.stdout, &out.stderr, out.status.success()),
+                    format!("file:{path}"),
+                ));
+            }
+            Err(e) => {
+                log::warn!("yt-dlp at {path} failed ({e}); trying system PATH");
+            }
+        }
+    }
     output_tool(app, YTDLP_SIDECAR, system_ytdlp_name(), args, "yt-dlp").await
+}
+
+/// On-disk optional tool (not in externalBin). Skip empty placeholders.
+fn resolve_optional_tool_path(app: &AppHandle, name: &str) -> Option<String> {
+    use tauri::Manager;
+    let filename = sidecar_filename(name);
+    let candidates = {
+        let mut v = Vec::new();
+        if let Ok(res) = app.path().resource_dir() {
+            v.push(res.join(&filename));
+            v.push(res.join("binaries").join(&filename));
+        }
+        v.push(std::path::PathBuf::from("binaries").join(&filename));
+        v
+    };
+    for p in candidates {
+        if let Ok(meta) = p.metadata() {
+            if meta.is_file() && meta.len() > 0 {
+                return p
+                    .canonicalize()
+                    .ok()
+                    .map(|c| c.to_string_lossy().into_owned())
+                    .or_else(|| Some(p.to_string_lossy().into_owned()));
+            }
+        }
+    }
+    None
+}
+
+fn merge_output(stdout: &[u8], stderr: &[u8], success: bool) -> String {
+    let stdout = String::from_utf8_lossy(stdout).to_string();
+    let stderr = String::from_utf8_lossy(stderr).to_string();
+    if success || stderr.trim().is_empty() {
+        stdout
+    } else if stdout.trim().is_empty() {
+        stderr
+    } else {
+        format!("{stdout}\n{stderr}")
+    }
 }
 
 /// Path to the ffmpeg binary for `--ffmpeg-location`, if we can see a real file.
@@ -130,8 +197,11 @@ async fn output_tool(
     if let Ok(cmd) = app.shell().sidecar(sidecar) {
         match cmd.args(args).output().await {
             Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-                return Ok((out.status.success(), stdout, format!("sidecar:{sidecar}")));
+                return Ok((
+                    out.status.success(),
+                    merge_output(&out.stdout, &out.stderr, out.status.success()),
+                    format!("sidecar:{sidecar}"),
+                ));
             }
             Err(e) => {
                 log::warn!("{label} sidecar output failed ({e}); trying system PATH");
@@ -150,10 +220,9 @@ async fn output_tool(
                 "{label} sidecar and system `{system_name}` both failed: {e}"
             ))
         })?;
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     Ok((
         out.status.success(),
-        stdout,
+        merge_output(&out.stdout, &out.stderr, out.status.success()),
         format!("path:{system_name}"),
     ))
 }

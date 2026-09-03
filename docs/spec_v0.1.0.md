@@ -594,7 +594,7 @@ Optional real-file checks: `VIDEO_RS_SMOKE=1 cargo test --manifest-path src-taur
 
 IPC: `probe_download` (metadata JSON, no file), `download_video` (returns the written path). YouTube hosts only. Playlist-only URLs are rejected. No cookies, no login. Live streams are rejected.
 
-yt-dlp is optional: the app starts without it; the environment card and download page say it is missing. `setup:sidecars` links yt-dlp when found and writes a placeholder so Tauri `externalBin` can build.
+yt-dlp is optional and is **not** in `externalBin` (release builds only require ffmpeg/ffprobe). `setup:sidecars` links a real yt-dlp when found; otherwise it warns and the app uses PATH. The environment card and download page say when it is missing.
 
 ---
 

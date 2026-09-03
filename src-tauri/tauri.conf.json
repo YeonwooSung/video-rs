@@ -41,8 +41,7 @@
     ],
     "externalBin": [
       "binaries/ffmpeg",
-      "binaries/ffprobe",
-      "binaries/yt-dlp"
+      "binaries/ffprobe"
     ],
     "macOS": {
       "hardenedRuntime": true,

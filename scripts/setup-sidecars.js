@@ -23,7 +23,6 @@ const {
   createWriteStream,
   createReadStream,
   chmodSync,
-  writeFileSync,
 } = require("fs");
 const { join, dirname, extname } = require("path");
 const os = require("os");
@@ -402,11 +401,10 @@ function setupDev(binDir, triple) {
       const mode = linkOrCopy(src, dest);
       console.log(`${mode.padEnd(10)} ${name}  ${src}  →  ${dest}`);
     } else {
-      // Tauri externalBin requires a file to exist; spawn falls back to PATH.
-      writeFileSync(dest, "");
-      if (process.platform !== "win32") chmodSync(dest, 0o755);
-      console.warn(`warning    ${name} not found; wrote placeholder ${dest}`);
-      console.warn("           Install yt-dlp for the Download page (brew/pipx/winget).");
+      if (existsSync(dest) && lstatSync(dest).isFile() && lstatSync(dest).size === 0) {
+        unlinkSync(dest);
+      }
+      console.warn(`warning    ${name} not found (optional). Install with brew/pipx/winget for Download.`);
     }
   }
 
