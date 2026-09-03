@@ -9,6 +9,7 @@ export interface DownloadInfo {
   duration_secs: number | null;
   uploader: string | null;
   thumbnail: string | null;
+  url: string;
 }
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -18,6 +19,32 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 
 export function probeDownload(url: string): Promise<DownloadInfo> {
   return invoke<DownloadInfo>("probe_download", {
+    options: { url },
+  });
+}
+
+export function classifyDownloadUrl(url: string): Promise<string> {
+  return invoke<string>("classify_download_url", { url });
+}
+
+export interface ParsedDownloadLine {
+  raw: string;
+  kind: string | null;
+  video_id: string | null;
+  error: string | null;
+}
+
+export function parseDownloadLines(text: string): Promise<ParsedDownloadLine[]> {
+  return invoke<ParsedDownloadLine[]>("parse_download_lines", { text });
+}
+
+export interface DownloadList {
+  title: string | null;
+  entries: DownloadInfo[];
+}
+
+export function probeDownloadList(url: string): Promise<DownloadList> {
+  return invoke<DownloadList>("probe_download_list", {
     options: { url },
   });
 }

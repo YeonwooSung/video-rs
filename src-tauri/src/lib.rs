@@ -51,6 +51,9 @@ pub fn run() {
             commands::timeline::write_text_file,
             commands::timeline::remove_file,
             commands::download::probe_download,
+            commands::download::probe_download_list,
+            commands::download::classify_download_url,
+            commands::download::parse_download_lines,
             commands::download::download_video,
         ])
         .run(tauri::generate_context!())

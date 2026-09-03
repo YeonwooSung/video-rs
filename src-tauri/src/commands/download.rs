@@ -5,10 +5,12 @@ use tauri_plugin_shell::process::CommandEvent;
 use crate::models::error::AppError;
 use crate::services::ffmpeg::ProgressPayload;
 use crate::services::job::{resolve_job_id, JobRegistry};
-use crate::services::sidecar::{resolve_ffmpeg_location, spawn_ytdlp, output_ytdlp};
+use crate::services::sidecar::{output_ytdlp, resolve_ffmpeg_location, spawn_ytdlp};
 use crate::services::ytdlp::{
-    build_download_args, build_probe_args, output_template_for_dir, parse_destination_path,
-    parse_ytdlp_percent, validate_youtube_video_url, DownloadQuality,
+    build_download_args, build_flat_playlist_args, build_probe_args, classify_youtube_url,
+    output_template_for_dir, parse_destination_path, parse_flat_playlist, parse_url_lines,
+    parse_ytdlp_percent, validate_youtube_video_url, watch_url_for_id, DownloadQuality,
+    YoutubeUrlKind,
 };
 
 #[derive(Debug, Deserialize)]
@@ -23,6 +25,7 @@ pub struct DownloadInfo {
     pub duration_secs: Option<f64>,
     pub uploader: Option<String>,
     pub thumbnail: Option<String>,
+    pub url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,23 +62,105 @@ pub async fn probe_download(
             stdout
         }));
     }
-    let parsed: YtdlpProbeJson = serde_json::from_str(stdout.trim()).map_err(|e| {
-        AppError::Ytdlp(format!("could not parse yt-dlp metadata: {e}"))
-    })?;
+    let parsed: YtdlpProbeJson = serde_json::from_str(stdout.trim())
+        .map_err(|e| AppError::Ytdlp(format!("could not parse yt-dlp metadata: {e}")))?;
     if parsed.is_live == Some(true) {
         return Err(AppError::InvalidArgument(
             "live streams are not supported".into(),
         ));
     }
-    let id = parsed.id.filter(|s| !s.is_empty()).ok_or_else(|| {
-        AppError::Ytdlp("yt-dlp metadata is missing a video id".into())
-    })?;
+    let id = parsed
+        .id
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::Ytdlp("yt-dlp metadata is missing a video id".into()))?;
     Ok(DownloadInfo {
         id,
         title: parsed.title.unwrap_or_else(|| "YouTube video".into()),
         duration_secs: parsed.duration.filter(|d| *d > 0.0),
         uploader: parsed.uploader.filter(|s| !s.is_empty()),
         thumbnail: parsed.thumbnail.filter(|s| !s.is_empty()),
+        url,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProbeDownloadListOptions {
+    pub url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DownloadList {
+    pub title: Option<String>,
+    pub entries: Vec<DownloadInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParsedDownloadLine {
+    pub raw: String,
+    pub kind: Option<String>,
+    pub video_id: Option<String>,
+    pub error: Option<String>,
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn classify_download_url(url: String) -> Result<String, AppError> {
+    match classify_youtube_url(&url)? {
+        YoutubeUrlKind::Video => Ok("video".into()),
+        YoutubeUrlKind::Playlist => Ok("playlist".into()),
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn parse_download_lines(text: String) -> Vec<ParsedDownloadLine> {
+    parse_url_lines(&text)
+        .into_iter()
+        .map(|line| ParsedDownloadLine {
+            raw: line.raw,
+            kind: line.kind.map(|k| match k {
+                YoutubeUrlKind::Video => "video".into(),
+                YoutubeUrlKind::Playlist => "playlist".into(),
+            }),
+            video_id: line.video_id,
+            error: line.error,
+        })
+        .collect()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn probe_download_list(
+    app: AppHandle,
+    options: ProbeDownloadListOptions,
+) -> Result<DownloadList, AppError> {
+    let kind = classify_youtube_url(&options.url)?;
+    if kind != YoutubeUrlKind::Playlist {
+        return Err(AppError::InvalidArgument(
+            "url is not a YouTube playlist".into(),
+        ));
+    }
+    let args = build_flat_playlist_args(options.url.trim());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let (ok, stdout, _) = output_ytdlp(&app, &arg_refs).await?;
+    if !ok {
+        return Err(AppError::Ytdlp(if stdout.trim().is_empty() {
+            "yt-dlp playlist probe failed".into()
+        } else {
+            stdout
+        }));
+    }
+    let (title, entries) = parse_flat_playlist(&stdout)?;
+    Ok(DownloadList {
+        title,
+        entries: entries
+            .into_iter()
+            .map(|e| DownloadInfo {
+                url: watch_url_for_id(&e.id),
+                id: e.id,
+                title: e.title,
+                duration_secs: e.duration_secs,
+                uploader: e.uploader,
+                thumbnail: None,
+            })
+            .collect(),
     })
 }
 
