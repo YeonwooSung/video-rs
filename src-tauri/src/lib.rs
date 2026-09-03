@@ -46,6 +46,7 @@ pub fn run() {
             commands::job::cancel_job,
             commands::timeline::validate_timeline,
             commands::timeline::export_timeline,
+            commands::timeline::render_timeline_proxy,
             commands::timeline::read_text_file,
             commands::timeline::write_text_file,
             commands::download::probe_download,

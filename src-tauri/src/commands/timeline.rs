@@ -29,7 +29,16 @@ pub async fn export_timeline(
     app: AppHandle,
     options: ExportTimelineOptions,
 ) -> Result<(), AppError> {
-    let (args, duration) = prepare_export(&app, &options).await?;
+    let (args, duration) = prepare_export(&app, &options, RenderProfile::export).await?;
+    FFmpegService::run(&app, args, Some(duration), options.job_id.as_deref()).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn render_timeline_proxy(
+    app: AppHandle,
+    options: ExportTimelineOptions,
+) -> Result<(), AppError> {
+    let (args, duration) = prepare_export(&app, &options, RenderProfile::proxy).await?;
     FFmpegService::run(&app, args, Some(duration), options.job_id.as_deref()).await
 }
 
@@ -54,6 +63,7 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
 async fn prepare_export(
     app: &AppHandle,
     options: &ExportTimelineOptions,
+    default_profile: fn(&TimelineProject) -> RenderProfile,
 ) -> Result<(Vec<String>, f64), AppError> {
     if options.output_path.is_empty() {
         return Err(AppError::InvalidArgument(
@@ -62,13 +72,14 @@ async fn prepare_export(
     }
     validate(&options.project)?;
     let has_audio = probe_source_audio(app, &options.project).await?;
-    prepare_export_with_audio(options, &has_audio)
+    prepare_export_with_audio(options, &has_audio, default_profile)
 }
 
 /// Sync compile path used by unit tests (no AppHandle / no probe).
 fn prepare_export_with_audio(
     options: &ExportTimelineOptions,
     has_audio: &HashMap<String, bool>,
+    default_profile: fn(&TimelineProject) -> RenderProfile,
 ) -> Result<(Vec<String>, f64), AppError> {
     if options.output_path.is_empty() {
         return Err(AppError::InvalidArgument(
@@ -79,7 +90,7 @@ fn prepare_export_with_audio(
     let profile = options
         .profile
         .clone()
-        .unwrap_or_else(|| RenderProfile::export(&options.project));
+        .unwrap_or_else(|| default_profile(&options.project));
     let args = if has_audio.is_empty() {
         build_timeline_args(&options.project, &options.output_path, &profile)?
     } else {
@@ -151,7 +162,8 @@ mod tests {
             profile: None,
             job_id: None,
         };
-        let err = prepare_export_with_audio(&options, &HashMap::new()).unwrap_err();
+        let err =
+            prepare_export_with_audio(&options, &HashMap::new(), RenderProfile::export).unwrap_err();
         match err {
             AppError::InvalidArgument(msg) => {
                 assert_eq!(msg, "output_path must not be empty");
@@ -169,9 +181,50 @@ mod tests {
             profile: None,
             job_id: None,
         };
-        let (args, duration) = prepare_export_with_audio(&options, &HashMap::new()).unwrap();
+        let (args, duration) =
+            prepare_export_with_audio(&options, &HashMap::new(), RenderProfile::export).unwrap();
         assert_eq!(duration, 2.0);
         assert!(args.iter().any(|a| a == "/tmp/out.mp4"));
         assert!(args.iter().any(|a| a == "-filter_complex"));
+        // Export default: project size, medium, crf 23
+        let joined = args.join(" ");
+        assert!(joined.contains("1280") || joined.contains("720"));
+        assert!(args.iter().any(|a| a == "medium"));
+        assert!(args.iter().any(|a| a == "23"));
+    }
+
+    #[test]
+    fn prepare_proxy_default_profile_args() {
+        let project = sample_project();
+        let options = ExportTimelineOptions {
+            project: project.clone(),
+            output_path: "/tmp/proxy.mp4".into(),
+            profile: None,
+            job_id: None,
+        };
+        let (args, duration) =
+            prepare_export_with_audio(&options, &HashMap::new(), RenderProfile::proxy).unwrap();
+        assert_eq!(duration, 2.0);
+        let joined = args.join(" ");
+        assert!(
+            joined.contains("640"),
+            "proxy default should scale to 640-wide: {joined}"
+        );
+        assert!(
+            args.iter().any(|a| a == "ultrafast"),
+            "proxy default preset ultrafast: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == "28"),
+            "proxy default crf 28: {args:?}"
+        );
+        assert!(
+            !args.iter().any(|a| a == "medium"),
+            "proxy must not use export preset medium"
+        );
+        assert!(
+            !args.iter().any(|a| a == "23"),
+            "proxy must not use export crf 23"
+        );
     }
 }

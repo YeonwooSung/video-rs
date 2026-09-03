@@ -34,6 +34,22 @@ export function exportTimeline(opts: {
   });
 }
 
+export function renderTimelineProxy(opts: {
+  project: TimelineProject;
+  outputPath: string;
+  profile?: RenderProfile | null;
+  jobId?: string;
+}): Promise<void> {
+  return invoke<void>("render_timeline_proxy", {
+    options: {
+      project: opts.project,
+      output_path: opts.outputPath,
+      profile: opts.profile ?? null,
+      job_id: opts.jobId ?? null,
+    },
+  });
+}
+
 export async function openJsonFile(): Promise<string | null> {
   const { open } = await import("@tauri-apps/plugin-dialog");
   const result = await open({

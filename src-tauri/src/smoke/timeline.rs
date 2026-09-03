@@ -144,6 +144,63 @@ fn gap_concat_duration_and_size() {
     assert_eq!(v.height, Some(240));
 }
 
+/// Same gap project as `gap_concat_duration_and_size`; export vs proxy width/duration.
+#[test]
+fn proxy_vs_export_width_and_duration() {
+    if skip_unless_smoke() {
+        return;
+    }
+    let fx = fixtures();
+    let src = path_str(&fx.in_av);
+    // Clip A 0–0.5s @ t=0, gap 0.25s, clip B 0–0.5s @ t=0.75 → total 1.25s
+    let proj = project(
+        320,
+        240,
+        25.0,
+        44100,
+        vec![video_track(
+            vec![
+                clip("a", &src, 0.0, 0.0, 0.5),
+                clip("b", &src, 0.75, 0.0, 0.5),
+            ],
+            false,
+        )],
+    );
+
+    let export_out = unique_out("tl_gap_export.mp4");
+    let export_args =
+        build_timeline_args(&proj, &path_str(&export_out), &RenderProfile::export(&proj))
+            .expect("export args");
+    run_ffmpeg(&export_args).expect("timeline export");
+    let export_info = probe_file(&export_out).expect("probe export");
+    assert_duration_near(&export_info, 1.25, 0.15);
+    let export_v = first_video(&export_info);
+    assert_eq!(export_v.width, Some(320));
+    assert_eq!(export_v.height, Some(240));
+
+    let proxy_out = unique_out("tl_gap_proxy.mp4");
+    let proxy_args =
+        build_timeline_args(&proj, &path_str(&proxy_out), &RenderProfile::proxy(&proj))
+            .expect("proxy args");
+    run_ffmpeg(&proxy_args).expect("timeline proxy");
+    let proxy_info = probe_file(&proxy_out).expect("probe proxy");
+    assert_duration_near(&proxy_info, 1.25, 0.15);
+    let proxy_v = first_video(&proxy_info);
+    assert_eq!(proxy_v.width, Some(640));
+    // 240 * (640/320) = 480
+    assert_eq!(proxy_v.height, Some(480));
+
+    let export_dur = export_info
+        .format
+        .duration
+        .expect("export duration");
+    let proxy_dur = proxy_info.format.duration.expect("proxy duration");
+    assert!(
+        (export_dur - proxy_dur).abs() <= 0.15,
+        "proxy duration {proxy_dur} should match export {export_dur} within ±0.15"
+    );
+}
+
 #[test]
 fn different_resolutions_scale_pad_to_project() {
     if skip_unless_smoke() {
