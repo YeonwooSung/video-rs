@@ -6,6 +6,7 @@ mod utils;
 #[cfg(test)]
 mod smoke;
 
+use commands::license::LicenseState;
 use services::job::JobRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,6 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(JobRegistry::default())
+        .manage(LicenseState::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -44,6 +46,8 @@ pub fn run() {
             commands::watermark::apply_watermark,
             commands::fade::fade_video,
             commands::job::cancel_job,
+            commands::license::set_license_file,
+            commands::license::license_status,
             commands::timeline::validate_timeline,
             commands::timeline::export_timeline,
             commands::timeline::render_timeline_proxy,

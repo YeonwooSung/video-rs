@@ -186,6 +186,7 @@ There is no GUI / real-file E2E suite yet. `npm run dev` in a browser cannot cal
 - [Signing and notarization](docs/signing.md) — Developer ID, notarize, CI secrets
 - [E2E / real-file smoke plan](docs/plan-e2e.md) — `VIDEO_RS_SMOKE=1` (not implemented yet)
 - [Portable static FFmpeg plan](docs/plan-static-ffmpeg.md) — release sidecars (not implemented yet)
+- [Desktop billing / thin-cloud plan](docs/plan-business.md) — paid local app first; no upload SaaS
 - [한국어 README](README.kr.md)
 
 ## License

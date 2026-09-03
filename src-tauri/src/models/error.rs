@@ -27,6 +27,9 @@ pub enum AppError {
     #[error("yt-dlp error: {0}")]
     Ytdlp(String),
 
+    #[error("License error: {0}")]
+    License(String),
+
     #[error("Operation cancelled")]
     Cancelled,
 }

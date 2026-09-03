@@ -6,6 +6,7 @@ pub mod fade;
 pub mod frame;
 pub mod gif;
 pub mod job;
+pub mod license;
 pub mod probe;
 pub mod resize;
 pub mod reveal;

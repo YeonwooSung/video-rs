@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
+use crate::commands::license::{require_pro_state, LicenseState};
 use crate::models::error::AppError;
 use crate::services::ffmpeg::FFmpegService;
 use crate::services::ffprobe::FFprobeService;
@@ -29,6 +30,7 @@ pub async fn export_timeline(
     app: AppHandle,
     options: ExportTimelineOptions,
 ) -> Result<(), AppError> {
+    require_pro_state(&app.state::<LicenseState>())?;
     let (args, duration) = prepare_export(&app, &options, RenderProfile::export).await?;
     FFmpegService::run(&app, args, Some(duration), options.job_id.as_deref()).await
 }
@@ -38,6 +40,7 @@ pub async fn render_timeline_proxy(
     app: AppHandle,
     options: ExportTimelineOptions,
 ) -> Result<(), AppError> {
+    require_pro_state(&app.state::<LicenseState>())?;
     let (args, duration) = prepare_export(&app, &options, RenderProfile::proxy).await?;
     FFmpegService::run(&app, args, Some(duration), options.job_id.as_deref()).await
 }

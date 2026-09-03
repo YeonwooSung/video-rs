@@ -622,3 +622,17 @@ The original v0.1.0 gaps and the follow-up caveats are implemented.
 - **Jobs** are recorded in the renderer (`localStorage`) whenever `useFfmpegJob` runs. Records may include a `replay` payload so the Jobs page can run the same command again.
 - **Fade** (`fade_video`) applies `fade` / `afade` in and/or out. Fade-out start is `duration - fade_out_secs`.
 - **Dark mode** toggles the `.dark` class (next-themes, default `system`).
+
+---
+
+## 13. Commercialization (planned)
+
+Phase 1 (offline license + timeline gate) is implemented; payment and a signed installer are not. The locked direction is in [plan-business.md](./plan-business.md):
+
+- Product is a **paid desktop app**, not an upload encoder SaaS. Media stays on the machine.
+- Toolbox pages stay free. Timeline export and proxy render become `pro`.
+- YouTube download is not the paid hook and is not bundled in release (`yt-dlp` stays optional on PATH).
+- A later thin cloud may issue licenses and sync presets / `.video-rs.json` only — no video bytes.
+- Shipping a paid build requires portable static FFmpeg ([plan-static-ffmpeg.md](./plan-static-ffmpeg.md)), signing ([signing.md](./signing.md)), and a root `LICENSE` with FFmpeg GPL notices.
+
+Do not add video-upload APIs or a second job queue unless that plan’s locked table changes first.

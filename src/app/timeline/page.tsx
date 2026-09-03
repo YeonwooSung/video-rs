@@ -26,6 +26,7 @@ import {
   saveFile,
   toAssetUrl,
 } from "@/lib/tauri/commands";
+import { setLicenseFile, type LicenseInfo } from "@/lib/tauri/license";
 import {
   exportTimeline,
   openJsonFile,
@@ -50,6 +51,7 @@ import type { TimelineClip, TimelineProject } from "@/lib/timeline/types";
 import { displaySize } from "@/lib/types/video";
 
 const DRAFT_KEY = "video-rs:timeline-draft";
+const LICENSE_KEY = "video-rs:license-path";
 
 export default function TimelinePage() {
   const { t } = useI18n();
@@ -71,8 +73,10 @@ export default function TimelinePage() {
   const [inDraft, setInDraft] = useState<string | null>(null);
   const [outDraft, setOutDraft] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
+  const [license, setLicense] = useState<LicenseInfo | null>(null);
   const job = useFfmpegJob("Timeline");
   const proxyJob = useFfmpegJob("Timeline proxy");
+  const isPro = license == null || license.tier === "pro";
 
   const renderProxy = useCallback(async ({ project: snap, outputPath }: ProxyRenderArgs) => {
     const result = await proxyJob.runJob(
@@ -104,10 +108,23 @@ export default function TimelinePage() {
   }, [proxyJob]);
 
   const proxy = useTimelineProxy(project, renderProxy, {
+    enabled: isPro,
     onError: (message) => {
       toast.error(message);
     },
   });
+
+  useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(LICENSE_KEY);
+    } catch {
+      stored = null;
+    }
+    void setLicenseFile(stored)
+      .then(setLicense)
+      .catch(() => setLicense(null));
+  }, []);
 
   const selected = useMemo(
     () => findClip(project, selectedClipId),
@@ -381,7 +398,32 @@ export default function TimelinePage() {
     }
   };
 
+  const handleLoadLicense = async () => {
+    try {
+      const path = await openJsonFile();
+      if (!path) return;
+      const next = await setLicenseFile(path);
+      setLicense(next);
+      try {
+        window.localStorage.setItem(LICENSE_KEY, path);
+      } catch {
+        // ignore
+      }
+      if (next.tier === "pro") {
+        toast.success(t("license.loaded"));
+      } else {
+        toast.error(t("license.invalid"), { description: next.error ?? undefined });
+      }
+    } catch (err) {
+      toast.error(t("license.invalid"), { description: String(err) });
+    }
+  };
+
   const handleExport = async () => {
+    if (!isPro) {
+      toast.error(t("license.needPro"));
+      return;
+    }
     if (!resolvedOutput) {
       toast.error(t("timeline.needOutput"));
       return;
@@ -478,12 +520,21 @@ export default function TimelinePage() {
         <Button
           className="gap-2"
           onClick={handleExport}
-          disabled={job.isRunning}
+          disabled={job.isRunning || !isPro}
         >
           <Download className="h-4 w-4" />
           {job.isRunning ? t("timeline.exporting") : t("timeline.export")}
         </Button>
+        <Button variant="outline" onClick={() => void handleLoadLicense()}>
+          {t("license.load")}
+        </Button>
+        <Badge variant={isPro ? "default" : "secondary"}>
+          {isPro ? t("license.pro") : t("license.free")}
+        </Badge>
       </div>
+      {!isPro && (
+        <p className="text-sm text-muted-foreground">{t("license.needPro")}</p>
+      )}
 
       {job.isRunning && (
         <JobProgress
