@@ -5,6 +5,7 @@ mod fixtures;
 mod probe;
 mod regressions;
 mod runner;
+mod timeline;
 mod tools;
 
 fn smoke_enabled() -> bool {
