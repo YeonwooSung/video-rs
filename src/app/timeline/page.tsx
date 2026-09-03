@@ -426,7 +426,9 @@ export default function TimelinePage() {
       setProgramRev((n) => n + 1);
       toastJobDone(t("timeline.done"), dest);
     } else {
-      if (!keepProgram && heldProgram) setProgramAsset(heldProgram);
+      if (!keepProgram) {
+        setProgramAsset((current) => current ?? heldProgram);
+      }
       if (result.cancelled) {
         toast.message(t("common.cancelled"));
       } else {
