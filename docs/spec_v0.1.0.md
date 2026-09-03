@@ -552,7 +552,37 @@ npm run setup:sidecars
 
 ---
 
-## 10. Known Limitations (v0.1.0)
+## 10. Timeline NLE (Phase 1)
+
+`/timeline` is a first-class multi-track NLE page. Existing tool pages (trim, concat, clips, …) stay as they are and do not call the timeline compiler.
+
+### Preview phases
+
+| Phase | Status | Preview |
+|-------|--------|---------|
+| 1 | Implemented | Source clip or last export only. No proxy generation, no realtime scrub. |
+| 2 | Planned | Proxy media for lighter preview |
+| 3 | Planned | Realtime scrub / frame-accurate preview |
+
+### IPC
+
+| Command | Role |
+|---------|------|
+| `validate_timeline` | Validate a `TimelineProject` (no FFmpeg spawn; does not require paths to exist on disk) |
+| `export_timeline` | Validate → compile → run FFmpeg via the shared job/progress path |
+| `read_text_file` / `write_text_file` | Load and save timeline project JSON on disk |
+
+### Compiler
+
+`build_timeline_args(project, output, &RenderProfile)` turns the project into an FFmpeg argument list (`filter_complex` graph). Phase 1 export uses `RenderProfile::export`. A proxy profile may exist for later phases; the Phase 1 UI does not generate or play proxies.
+
+### Smoke
+
+Optional real-file checks: `VIDEO_RS_SMOKE=1 cargo test --manifest-path src-tauri/Cargo.toml smoke::timeline -- --test-threads=1`.
+
+---
+
+## 11. Known Limitations (v0.1.0)
 
 The original v0.1.0 gaps and the follow-up caveats are implemented.
 
