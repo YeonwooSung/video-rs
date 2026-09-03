@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FolderOpen, Film, Music, Repeat2, Play, Maximize2, Scissors, Clapperboard, Layers, RotateCw, Crop, Image, Gauge, Volume2, Stamp, History, Sunset, GanttChart } from "lucide-react";
+import { FolderOpen, Film, Music, Repeat2, Play, Maximize2, Scissors, Clapperboard, Layers, RotateCw, Crop, Image, Gauge, Volume2, Stamp, History, Sunset, GanttChart, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,6 +20,7 @@ import Link from "next/link";
 
 const features = [
   { href: "/timeline", icon: GanttChart, titleKey: "home.feat.timeline", descKey: "home.feat.timelineDesc", passFile: false },
+  { href: "/download", icon: Download, titleKey: "home.feat.download", descKey: "home.feat.downloadDesc", passFile: false },
   { href: "/probe", icon: Film, titleKey: "home.feat.analyze", descKey: "home.feat.analyzeDesc" },
   { href: "/extract", icon: Music, titleKey: "home.feat.extract", descKey: "home.feat.extractDesc" },
   { href: "/transcode", icon: Repeat2, titleKey: "home.feat.transcode", descKey: "home.feat.transcodeDesc" },
@@ -126,6 +127,13 @@ export default function HomePage() {
                   <dd className="font-medium">
                     {env.ffprobe_ok ? t("home.ready") : t("home.missing")}
                     {env.ffprobe_source ? ` (${env.ffprobe_source})` : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">{t("home.ytdlp")}</dt>
+                  <dd className="font-medium">
+                    {env.ytdlp_ok ? t("home.ready") : t("home.missing")}
+                    {env.ytdlp_source ? ` (${env.ytdlp_source})` : ""}
                   </dd>
                 </div>
               </dl>

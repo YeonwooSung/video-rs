@@ -23,6 +23,7 @@ import {
   History,
   Sunset,
   GanttChart,
+  Download,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { LocaleToggle } from "@/components/i18n/LocaleToggle";
@@ -47,6 +48,7 @@ const groups: { titleKey: string | null; items: NavItem[] }[] = [
   {
     titleKey: "nav.convert",
     items: [
+      { href: "/download", labelKey: "nav.download", icon: Download },
       { href: "/transcode", labelKey: "nav.transcode", icon: Repeat2 },
       { href: "/extract", labelKey: "nav.extract", icon: Music },
       { href: "/gif", labelKey: "nav.gif", icon: Image },

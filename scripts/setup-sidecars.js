@@ -23,6 +23,7 @@ const {
   createWriteStream,
   createReadStream,
   chmodSync,
+  writeFileSync,
 } = require("fs");
 const { join, dirname, extname } = require("path");
 const os = require("os");
@@ -379,10 +380,11 @@ async function setupRelease(repoRoot, binDir, destTriple, hostTriple) {
 
 function setupDev(binDir, triple) {
   const ext = process.platform === "win32" ? ".exe" : "";
-  const tools = ["ffmpeg", "ffprobe"];
+  const required = ["ffmpeg", "ffprobe"];
+  const optional = ["yt-dlp"];
   const missing = [];
 
-  for (const name of tools) {
+  for (const name of required) {
     const src = findBinary(name);
     if (!src) {
       missing.push(name);
@@ -391,6 +393,21 @@ function setupDev(binDir, triple) {
     const dest = join(binDir, `${name}-${triple}${ext}`);
     const mode = linkOrCopy(src, dest);
     console.log(`${mode.padEnd(10)} ${name}  ${src}  →  ${dest}`);
+  }
+
+  for (const name of optional) {
+    const dest = join(binDir, `${name}-${triple}${ext}`);
+    const src = findBinary(name);
+    if (src) {
+      const mode = linkOrCopy(src, dest);
+      console.log(`${mode.padEnd(10)} ${name}  ${src}  →  ${dest}`);
+    } else {
+      // Tauri externalBin requires a file to exist; spawn falls back to PATH.
+      writeFileSync(dest, "");
+      if (process.platform !== "win32") chmodSync(dest, 0o755);
+      console.warn(`warning    ${name} not found; wrote placeholder ${dest}`);
+      console.warn("           Install yt-dlp for the Download page (brew/pipx/winget).");
+    }
   }
 
   if (missing.length) {

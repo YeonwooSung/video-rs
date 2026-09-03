@@ -2,6 +2,7 @@
 /// Tauri appends the target triple automatically at bundle time.
 pub const FFMPEG_SIDECAR: &str = "binaries/ffmpeg";
 pub const FFPROBE_SIDECAR: &str = "binaries/ffprobe";
+pub const YTDLP_SIDECAR: &str = "binaries/yt-dlp";
 
 /// Rustc target triple for the current compile target.
 /// Used to name sidecars (`ffmpeg-<triple>[.exe]`) and report environment info.
@@ -78,6 +79,14 @@ pub fn system_ffprobe_name() -> &'static str {
         "ffprobe.exe"
     } else {
         "ffprobe"
+    }
+}
+
+pub fn system_ytdlp_name() -> &'static str {
+    if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
     }
 }
 

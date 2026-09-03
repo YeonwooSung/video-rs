@@ -11,3 +11,4 @@ pub mod speed;
 pub mod timeline;
 pub mod volume;
 pub mod watermark;
+pub mod ytdlp;

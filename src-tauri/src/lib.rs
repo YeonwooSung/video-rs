@@ -48,6 +48,8 @@ pub fn run() {
             commands::timeline::export_timeline,
             commands::timeline::read_text_file,
             commands::timeline::write_text_file,
+            commands::download::probe_download,
+            commands::download::download_video,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

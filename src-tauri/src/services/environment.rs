@@ -3,7 +3,7 @@ use tauri::AppHandle;
 use crate::models::environment::EnvironmentInfo;
 use crate::models::error::AppError;
 use crate::services::encoders::{parse_hw_accels, parse_hw_encoders, parse_version_line};
-use crate::services::sidecar::{output_ffmpeg, output_ffprobe};
+use crate::services::sidecar::{output_ffmpeg, output_ffprobe, output_ytdlp};
 use crate::utils::binary::{
     current_arch, current_os, current_target_triple, sidecar_filename,
 };
@@ -22,6 +22,10 @@ impl EnvironmentService {
                 Ok((ok, stdout, source)) => (ok, stdout, Some(source)),
                 Err(_) => (false, String::new(), None),
             };
+        let (ytdlp_ok, ytdlp_out, ytdlp_source) = match output_ytdlp(app, &["--version"]).await {
+            Ok((ok, stdout, source)) => (ok, stdout, Some(source)),
+            Err(_) => (false, String::new(), None),
+        };
 
         let mut hw_encoders = Vec::new();
         let mut hw_accels = Vec::new();
@@ -50,6 +54,10 @@ impl EnvironmentService {
             ffprobe_source,
             ffmpeg_sidecar: sidecar_filename("ffmpeg"),
             ffprobe_sidecar: sidecar_filename("ffprobe"),
+            ytdlp_ok,
+            ytdlp_version: parse_version_line(&ytdlp_out),
+            ytdlp_source,
+            ytdlp_sidecar: sidecar_filename("yt-dlp"),
             hw_encoders,
             hw_accels,
         })

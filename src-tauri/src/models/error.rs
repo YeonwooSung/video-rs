@@ -24,6 +24,9 @@ pub enum AppError {
     #[error("Sidecar error: {0}")]
     Sidecar(String),
 
+    #[error("yt-dlp error: {0}")]
+    Ytdlp(String),
+
     #[error("Operation cancelled")]
     Cancelled,
 }

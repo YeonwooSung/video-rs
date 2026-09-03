@@ -17,6 +17,7 @@ Every encode/extract job shows progress, can be cancelled, and records an entry 
 | Inspect | Analyze | Probe container, duration, bit rate, size, and every stream (codec, FPS, resolution, language, title) |
 | Convert | Transcode | Re-encode video/audio (software or hardware). Subtitles can be copied, burned in, or dropped. External `.srt`/`.ass` can be burned |
 | Convert | Mux | Combine selected video, audio, and optional subtitle streams from one or more files. Text subs are converted for the output container (e.g. `mov_text` in MP4) |
+| Convert | YouTube | Save one public watch/shorts URL via yt-dlp (1080/720/best). No playlists or sign-in yet |
 | Convert | Extract | Pull an audio track (MP3, AAC, FLAC, WAV, Opus) or a subtitle track (SRT, ASS, VTT) |
 | Convert | GIF | Palette-based animated GIF from a time range (default 10 fps, 480 px wide) |
 | Edit | Trim | Cut `[start, end)` with fast stream copy or frame-accurate re-encode |

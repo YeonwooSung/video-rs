@@ -5,7 +5,8 @@ use tauri::async_runtime::Receiver;
 
 use crate::models::error::AppError;
 use crate::utils::binary::{
-    system_ffmpeg_name, system_ffprobe_name, FFMPEG_SIDECAR, FFPROBE_SIDECAR,
+    sidecar_filename, system_ffmpeg_name, system_ffprobe_name, system_ytdlp_name, FFMPEG_SIDECAR,
+    FFPROBE_SIDECAR, YTDLP_SIDECAR,
 };
 
 pub struct SpawnedSidecar {
@@ -79,6 +80,44 @@ pub async fn output_ffprobe(
     args: &[&str],
 ) -> Result<(bool, String, String), AppError> {
     output_tool(app, FFPROBE_SIDECAR, system_ffprobe_name(), args, "FFprobe").await
+}
+
+pub fn spawn_ytdlp(app: &AppHandle, args: &[String]) -> Result<SpawnedSidecar, AppError> {
+    spawn_tool(
+        app,
+        YTDLP_SIDECAR,
+        system_ytdlp_name(),
+        args,
+        "yt-dlp",
+    )
+}
+
+pub async fn output_ytdlp(
+    app: &AppHandle,
+    args: &[&str],
+) -> Result<(bool, String, String), AppError> {
+    output_tool(app, YTDLP_SIDECAR, system_ytdlp_name(), args, "yt-dlp").await
+}
+
+/// Path to the ffmpeg binary for `--ffmpeg-location`, if we can see a real file.
+pub fn resolve_ffmpeg_location(app: &AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let name = sidecar_filename("ffmpeg");
+    if let Ok(res) = app.path().resource_dir() {
+        let candidate = res.join(&name);
+        if candidate.is_file() {
+            return Some(candidate.to_string_lossy().into_owned());
+        }
+        let nested = res.join("binaries").join(&name);
+        if nested.is_file() {
+            return Some(nested.to_string_lossy().into_owned());
+        }
+    }
+    let dev = std::path::Path::new("binaries").join(&name);
+    if dev.is_file() {
+        return dev.canonicalize().ok().map(|p| p.to_string_lossy().into_owned());
+    }
+    None
 }
 
 async fn output_tool(

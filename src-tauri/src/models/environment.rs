@@ -14,6 +14,10 @@ pub struct EnvironmentInfo {
     pub ffprobe_source: Option<String>,
     pub ffmpeg_sidecar: String,
     pub ffprobe_sidecar: String,
+    pub ytdlp_ok: bool,
+    pub ytdlp_version: Option<String>,
+    pub ytdlp_source: Option<String>,
+    pub ytdlp_sidecar: String,
     pub hw_encoders: Vec<String>,
     pub hw_accels: Vec<String>,
 }

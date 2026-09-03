@@ -24,6 +24,7 @@ Video RS is a desktop video utility application built on **Tauri v2** (Rust nati
 | Watermark | Image overlay or drawtext at a corner/center |
 | Jobs | In-app history of recent FFmpeg runs |
 | Viewer | Play local files with rate control, frame step, precise seek, and snapshot |
+| YouTube download | Save one public YouTube video via yt-dlp (no sign-in, no playlists in Phase 1) |
 
 ---
 
@@ -582,7 +583,22 @@ Optional real-file checks: `VIDEO_RS_SMOKE=1 cargo test --manifest-path src-taur
 
 ---
 
-## 11. Known Limitations (v0.1.0)
+## 11. YouTube download (Phase 1)
+
+`/download` saves **one public YouTube video** to a folder on this machine using **yt-dlp** (sidecar, then PATH). FFmpeg merges separate video/audio streams (`--ffmpeg-location`).
+
+| Phase | Status |
+|-------|--------|
+| 1 | Implemented: single watch/shorts/youtu.be URL, quality best/1080/720, progress + cancel |
+| 2 | Planned: playlists and multiple URLs, sequential |
+
+IPC: `probe_download` (metadata JSON, no file), `download_video` (returns the written path). YouTube hosts only. Playlist-only URLs are rejected. No cookies, no login. Live streams are rejected.
+
+yt-dlp is optional: the app starts without it; the environment card and download page say it is missing. `setup:sidecars` links yt-dlp when found and writes a placeholder so Tauri `externalBin` can build.
+
+---
+
+## 12. Known Limitations (v0.1.0)
 
 The original v0.1.0 gaps and the follow-up caveats are implemented.
 

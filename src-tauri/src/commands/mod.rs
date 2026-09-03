@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod concat;
 pub mod crop;
+pub mod download;
 pub mod fade;
 pub mod frame;
 pub mod gif;

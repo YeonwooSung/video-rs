@@ -87,6 +87,10 @@ export interface EnvironmentInfo {
   ffprobe_source: string | null;
   ffmpeg_sidecar: string;
   ffprobe_sidecar: string;
+  ytdlp_ok: boolean;
+  ytdlp_version: string | null;
+  ytdlp_source: string | null;
+  ytdlp_sidecar: string;
   hw_encoders: string[];
   hw_accels: string[];
 }
