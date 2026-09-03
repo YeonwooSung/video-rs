@@ -54,6 +54,8 @@ export default function TimelinePage() {
   const [outputPath, setOutputPath] = useState("");
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
   const [exportedHash, setExportedHash] = useState<string | null>(null);
+  /** Bumped on every successful export so Program reloads the same path. */
+  const [programRev, setProgramRev] = useState(0);
   const [sourceAsset, setSourceAsset] = useState<{ path: string; url: string } | null>(
     null,
   );
@@ -134,12 +136,15 @@ export default function TimelinePage() {
   }, [selected?.source_path, t]);
 
   useEffect(() => {
-    if (!lastExportPath) return;
+    if (!lastExportPath || programRev < 1) return;
     const path = lastExportPath;
+    const rev = programRev;
     let cancelled = false;
     toAssetUrl(path)
       .then((url) => {
-        if (!cancelled) setProgramAsset({ path, url });
+        if (cancelled) return;
+        const sep = url.includes("?") ? "&" : "?";
+        setProgramAsset({ path, url: `${url}${sep}v=${rev}` });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -149,7 +154,7 @@ export default function TimelinePage() {
     return () => {
       cancelled = true;
     };
-  }, [lastExportPath, t]);
+  }, [lastExportPath, programRev, t]);
 
   const applyProject = useCallback((next: TimelineProject) => {
     setProject(next);
@@ -331,6 +336,8 @@ export default function TimelinePage() {
     }
     const snapshot = project;
     const dest = resolvedOutput;
+    const heldProgram = programAsset;
+    setProgramAsset(null);
     const result = await job.runJob(
       (jobId) =>
         exportTimeline({
@@ -357,11 +364,15 @@ export default function TimelinePage() {
     if (result.ok) {
       setLastExportPath(dest);
       setExportedHash(projectHash(snapshot));
+      setProgramRev((n) => n + 1);
       toastJobDone(t("timeline.done"), dest);
-    } else if (result.cancelled) {
-      toast.message(t("common.cancelled"));
     } else {
-      toast.error(t("timeline.failed"), { description: result.error });
+      if (heldProgram) setProgramAsset(heldProgram);
+      if (result.cancelled) {
+        toast.message(t("common.cancelled"));
+      } else {
+        toast.error(t("timeline.failed"), { description: result.error });
+      }
     }
   };
 
@@ -491,7 +502,12 @@ export default function TimelinePage() {
           </CardHeader>
           <CardContent>
             {programSrc ? (
-              <VideoPlayer src={programSrc} fps={project.fps} enableSpace={false} />
+              <VideoPlayer
+                key={programRev}
+                src={programSrc}
+                fps={project.fps}
+                enableSpace={false}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
                 {t("timeline.programEmpty")}

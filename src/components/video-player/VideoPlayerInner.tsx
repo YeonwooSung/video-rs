@@ -224,7 +224,8 @@ export default function VideoPlayerInner({
 }
 
 function guessType(src: string): string {
-  const ext = src.split(".").pop()?.toLowerCase();
+  const path = src.split("?")[0].split("#")[0];
+  const ext = path.split(".").pop()?.toLowerCase();
   const map: Record<string, string> = {
     mp4: "video/mp4",
     mkv: "video/x-matroska",
