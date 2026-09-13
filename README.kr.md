@@ -91,9 +91,13 @@ winget install Gyan.FFmpeg
 ## 설치
 
 ```bash
+git clone https://github.com/YeonwooSung/video-rs.git
+cd video-rs
 npm install
 npm run setup:sidecars
 ```
+
+macOS는 Xcode 명령줄 도구가 필요합니다 (`xcode-select --install`). `cargo`가 없으면 [rustup](https://rustup.rs/)으로 Rust를 설치하세요.
 
 `setup:sidecars`는 PATH, Homebrew, 흔한 Windows 경로에서 바이너리를 찾아 Tauri 이름으로 만듭니다 (Unix는 심볼릭 링크, Windows는 복사).
 
@@ -108,19 +112,98 @@ npm run setup:sidecars
 
 `src-tauri/binaries/`는 git에 넣지 않습니다 (기기마다 다름). 실행 시 사이드카를 먼저 쓰고, 없으면 `PATH`를 씁니다. 홈의 **환경** 카드에 어느 쪽을 썼는지 나옵니다.
 
-배포용 설치 파일을 만들 때는 이 링크를 타깃별 정적 FFmpeg/FFprobe로 바꾸세요.
+유튜브 받기는 선택입니다. PATH에 `yt-dlp`를 두면 됩니다 (`brew install yt-dlp` 등). 릴리스 번들에 yt-dlp는 넣지 않습니다.
 
-## 명령
+## 개발, 빌드, 실행
+
+FFmpeg·파일·유튜브와 붙는 도구는 **데스크톱 앱**에서 쓰세요. 브라우저 탭만으로는 부족합니다.
+
+### 개발 (`tauri:dev`)
+
+이 기기에서 매일 쓰는 흐름입니다.
+
+```bash
+npm install                 # 클론 후 한 번, lockfile이 바뀌면 다시
+npm run setup:sidecars      # 한 번, 또는 FFmpeg를 다시 설치한 뒤
+npm run tauri:dev
+```
+
+Next.js와 Tauri 창이 같이 뜹니다. Rust와 UI는 핫 리로드됩니다. 첫 실행은 Rust 크레이트를 컴파일해서 느리고, 그다음은 빠릅니다.
+
+디버그 빌드는 타임라인 보내기를 **Pro**로 봅니다 (라이선스 파일 없음). 무료 게이트를 보려면:
+
+```bash
+VIDEO_RS_FORCE_TIER=free npm run tauri:dev
+```
+
+Apple Developer 계정은 **필요 없습니다.**
+
+### 프론트만 (도구 확인용 아님)
+
+```bash
+npm run dev
+```
+
+`http://localhost:3000`이 열립니다. 레이아웃과 문구는 보이지만, 파일 열기·분석·인코딩·받기·라이선스 같은 Tauri `invoke`는 **실패**합니다. CSS/마크업 확인할 때만 쓰세요.
+
+```bash
+npm run build     # Tauri가 넣는 정적보내기 (out/)
+npm run lint
+```
+
+### 제품 빌드 (`tauri:build`)
+
+이 OS/아키텍처용 설치 파일입니다. 평소 사이드카 설정 후:
+
+```bash
+npm run setup:sidecars
+npm run tauri:build
+```
+
+다른 기기용 이식 가능한 설치 파일 (대상에 Homebrew/apt FFmpeg가 없어도 됨):
+
+```bash
+npm run setup:sidecars:release    # 또는: npm run setup:sidecars -- --release
+npm run tauri:build
+```
+
+`--release`는 `scripts/sidecar-lock.json`에 핀된 GPL 정적 FFmpeg/FFprobe를 받아 일반 파일로 씁니다 (Homebrew 심링크 아님). 번들은 수십–200MB+입니다. [docs/plan-static-ffmpeg.md](docs/plan-static-ffmpeg.md)를 보세요.
+
+산출물 위치 (`src-tauri/tauri.conf.json`의 버전):
+
+| OS | 산출물 |
+|----|--------|
+| macOS | `src-tauri/target/release/bundle/macos/video-rs.app` 및 `…/dmg/video-rs_*_<arch>.dmg` |
+| Windows | `src-tauri/target/release/bundle/msi/` 및 `…/nsis/` |
+| Linux | `src-tauri/target/release/bundle/deb/` / `appimage/` / `rpm/` |
+
+### 빌드한 앱 실행
+
+- **macOS:** `video-rs.app`을 열거나 DMG를 마운트해 응용 프로그램으로 옮깁니다. 로컬 빌드는 **ad-hoc 서명**이라 빌드한 Mac에서만 바로 열립니다. 다른 Mac은 Gatekeeper가 막습니다. 나눠 주려면 Developer ID와 공증이 필요합니다 ([docs/signing.kr.md](docs/signing.kr.md)). **로컬 빌드·실행에는 Apple Developer 멤버십이 필요 없습니다.**
+- **Windows / Linux:** 위 폴더의 설치 파일 또는 AppImage를 실행합니다.
+
+라이선스 파일이 없는 릴리스 빌드는 **무료**입니다. 툴박스와 유튜브는 되고, 타임라인 보내기·프록시는 Pro 파일이 필요합니다.
+
+### 테스트
+
+```bash
+npm run test:unit     # src-tauri의 cargo test (FFmpeg 불필요)
+npm run test:smoke    # VIDEO_RS_SMOKE=1, PATH에 ffmpeg 필요
+```
+
+### 명령 요약
 
 | 명령 | 설명 |
 |------|------|
-| `npm run tauri:dev` | 데스크톱 앱 (Next.js + Rust 핫 리로드) |
-| `npm run tauri:build` | 제품 번들 (`.app` / 설치 파일) |
-| `npm run dev` | Next.js만 `http://localhost:3000` — 브라우저에서는 Tauri IPC가 실패합니다 |
+| `npm run tauri:dev` | **개발:** 데스크톱 앱 (Next.js + Rust) |
+| `npm run tauri:build` | **빌드:** 이 기기용 `.app` / 설치 파일 |
+| `npm run setup:sidecars` | 개발용 FFmpeg/FFprobe 연결 또는 복사 |
+| `npm run setup:sidecars:release` | 이식 가능한 번들용 정적 FFmpeg |
+| `npm run dev` | Next.js만 — IPC 없음, 도구 동작 안 함 |
 | `npm run build` | `out/`으로 정적보내기 |
-| `npm run setup:sidecars` | 이 OS/아키텍처용 FFmpeg/FFprobe 연결 또는 복사 |
+| `npm run test:unit` | Rust 단위 테스트 |
+| `npm run test:smoke` | 실제 파일 스모크 테스트 |
 | `npm run lint` | ESLint |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | Rust 단위 테스트 |
 
 ## 디렉터리
 

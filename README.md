@@ -91,9 +91,13 @@ winget install Gyan.FFmpeg
 ## Setup
 
 ```bash
+git clone https://github.com/YeonwooSung/video-rs.git
+cd video-rs
 npm install
 npm run setup:sidecars
 ```
+
+On macOS you also need the Xcode command-line tools (`xcode-select --install`). Install Rust with [rustup](https://rustup.rs/) if `cargo` is missing.
 
 `setup:sidecars` looks on PATH, Homebrew prefixes, and common Windows folders, then writes Tauri names (symlink on Unix, copy on Windows):
 
@@ -108,19 +112,98 @@ npm run setup:sidecars
 
 `src-tauri/binaries/` is gitignored (machine-specific). At runtime the app tries the sidecar first, then `PATH`. The home **Environment** card shows which source was used.
 
-For a production installer, replace those links with statically linked FFmpeg/FFprobe for each target.
+YouTube download is optional: install `yt-dlp` on PATH (`brew install yt-dlp`, etc.). The app never requires it in the release bundle.
 
-## Commands
+## Develop, build, and run
+
+Use the **desktop** app for any tool that talks to FFmpeg, files, or YouTube. A browser tab is not enough.
+
+### Development (`tauri:dev`)
+
+Daily loop on this machine:
+
+```bash
+npm install                 # once per clone / after lockfile changes
+npm run setup:sidecars      # once, or after you reinstall FFmpeg
+npm run tauri:dev
+```
+
+That starts Next.js and the Tauri window together. Rust and the UI hot-reload. The first launch compiles the Rust crate and is slow; later ones are faster.
+
+Debug builds treat timeline export as **Pro** (no license file). To exercise the free gate:
+
+```bash
+VIDEO_RS_FORCE_TIER=free npm run tauri:dev
+```
+
+You do **not** need an Apple Developer account for this.
+
+### Frontend only (do not use for tools)
+
+```bash
+npm run dev
+```
+
+Opens `http://localhost:3000`. Layout and copy work; every Tauri `invoke` (open file, probe, encode, download, license) **fails**. Use this only for CSS/markup.
+
+```bash
+npm run build     # static export to out/ (what Tauri embeds)
+npm run lint
+```
+
+### Production build (`tauri:build`)
+
+Installer for **this** OS/arch, after a normal sidecar setup:
+
+```bash
+npm run setup:sidecars
+npm run tauri:build
+```
+
+Portable installer (Homebrew/apt FFmpeg not required on the target machine):
+
+```bash
+npm run setup:sidecars:release    # or: npm run setup:sidecars -- --release
+npm run tauri:build
+```
+
+`--release` downloads pinned static GPL FFmpeg/FFprobe from `scripts/sidecar-lock.json` and writes regular files (not Homebrew symlinks). The bundle is tens–200+ MB. See [docs/plan-static-ffmpeg.md](docs/plan-static-ffmpeg.md).
+
+Typical outputs (version comes from `src-tauri/tauri.conf.json`):
+
+| OS | Artifacts |
+|----|-----------|
+| macOS | `src-tauri/target/release/bundle/macos/video-rs.app` and `…/dmg/video-rs_*_<arch>.dmg` |
+| Windows | `src-tauri/target/release/bundle/msi/` and `…/nsis/` |
+| Linux | `src-tauri/target/release/bundle/deb/` / `appimage/` / `rpm/` |
+
+### Run the built app
+
+- **macOS:** open `video-rs.app`, or mount the DMG and drag the app to Applications. A local build is **ad-hoc signed**. It runs on the Mac that built it. Other Macs hit Gatekeeper until you have a Developer ID and notarize ([docs/signing.md](docs/signing.md)). An Apple Developer membership is **not** required to build or run locally.
+- **Windows / Linux:** run the installer or the AppImage from the bundle folder above.
+
+Release builds without a license file are **Free**: toolbox and YouTube still work; timeline export and proxy require a Pro license file.
+
+### Tests
+
+```bash
+npm run test:unit     # cargo test in src-tauri (no FFmpeg required)
+npm run test:smoke    # VIDEO_RS_SMOKE=1; needs ffmpeg on PATH
+```
+
+### Command cheat sheet
 
 | Command | Description |
 |---------|-------------|
-| `npm run tauri:dev` | Desktop app (Next.js + Rust hot reload) |
-| `npm run tauri:build` | Production bundle (`.app` / installer) |
-| `npm run dev` | Next.js only at `http://localhost:3000` — Tauri IPC will fail in a browser |
+| `npm run tauri:dev` | **Develop:** desktop app (Next.js + Rust) |
+| `npm run tauri:build` | **Build:** production `.app` / installer for this machine |
+| `npm run setup:sidecars` | Dev FFmpeg/FFprobe link or copy |
+| `npm run setup:sidecars:release` | Pinned static FFmpeg for a portable bundle |
+| `npm run dev` | Next.js only — no IPC, tools will not run |
 | `npm run build` | Static export to `out/` |
-| `npm run setup:sidecars` | Link or copy FFmpeg/FFprobe for this OS/arch |
+| `npm run test:unit` | Rust unit tests |
+| `npm run test:smoke` | Real-file smoke tests |
 | `npm run lint` | ESLint |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit tests |
 
 ## Project layout
 
